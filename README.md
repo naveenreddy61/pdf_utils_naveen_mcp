@@ -93,7 +93,39 @@ The configuration file is located at:
    }
    ```
 
-   **Option C: Using Python directly**
+   **Option C: Using uvx from GitHub (no local setup needed)**
+   ```json
+   {
+     "mcpServers": {
+       "pdf-tools": {
+         "command": "uvx",
+         "args": [
+           "--from", 
+           "git+https://github.com/naveenreddy61/pdf_utils_naveen_mcp_server",
+           "pdf-mcp-server"
+         ]
+       }
+     }
+   }
+   ```
+
+   **Option D: Using uvx from local repository**
+   ```json
+   {
+     "mcpServers": {
+       "pdf-tools": {
+         "command": "uvx",
+         "args": [
+           "--from", 
+           "/path/to/pdf_utils_naveen_mcp_server",
+           "pdf-mcp-server"
+         ]
+       }
+     }
+   }
+   ```
+
+   **Option E: Using Python directly**
    ```json
    {
      "mcpServers": {
@@ -111,11 +143,27 @@ The configuration file is located at:
    }
    ```
 
-3. **Update the path**: Replace `/path/to/pdf-mcp-server` with the actual path to your cloned repository.
+3. **Choose the best option for your setup**:
+   - **Option A (uv)**: Best if you have the repository locally and want to use uv's project management
+   - **Option B (global)**: Best if you've installed the package globally with pip
+   - **Option C (uvx + GitHub)**: **Recommended for easy setup** - no cloning or local setup needed! Perfect for Windows users.
+   - **Option D (uvx + local)**: Best if you have the repo cloned locally but don't want to manage virtual environments
+   - **Option E (Python)**: Advanced users who want full control over the Python environment
 
-4. **Restart Claude Desktop**: Close and reopen Claude Desktop for the changes to take effect.
+4. **Benefits of uvx options (C & D)**:
+   - **No virtual environment management**: uvx creates temporary isolated environments automatically
+   - **No dependency installation**: uvx handles all dependencies transparently  
+   - **No uv sync required**: Skip the manual environment setup step
+   - **Perfect for testing**: Great for trying out the server without commitment
+   - **Cross-platform**: Works consistently on Windows, macOS, and Linux
 
-5. **Verify the setup**: Look for the MCP tools icon in Claude Desktop, indicating that your tools are available.
+5. **Update paths if needed**: 
+   - For local options (A, D, E): Replace `/path/to/pdf_utils_naveen_mcp_server` with your actual repository path
+   - For GitHub option (C): No path changes needed!
+
+6. **Restart Claude Desktop**: Close and reopen Claude Desktop for the changes to take effect.
+
+7. **Verify the setup**: Look for the MCP tools icon in Claude Desktop, indicating that your tools are available.
 
 ### Testing the Integration
 
@@ -251,9 +299,23 @@ The server provides comprehensive error handling for common scenarios:
 
 **Problem**: "Command not found" errors  
 **Solutions:**
-- Ensure `uv` is installed and in your system PATH
+- Ensure `uv` or `uvx` is installed and in your system PATH
 - Use absolute paths in the configuration
 - Verify the project directory path is correct
+
+**Problem**: uvx GitHub option (Option C) fails  
+**Solutions:**
+- Check your internet connection for GitHub access
+- Verify the repository URL is correct: `git+https://github.com/naveenreddy61/pdf_utils_naveen_mcp_server`
+- Try using a local clone with Option D instead
+- Ensure Git is installed on your system
+
+**Problem**: uvx local option (Option D) fails  
+**Solutions:**
+- Verify the repository path exists and contains `pyproject.toml`
+- Use absolute paths instead of relative paths
+- Check that the console script name `pdf-mcp-server` matches your pyproject.toml
+- Ensure the repository has been cloned (not just downloaded as ZIP)
 
 ### Server Issues
 
