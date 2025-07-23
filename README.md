@@ -6,9 +6,11 @@ A powerful Model Context Protocol (MCP) server that enables AI assistants like C
 
 - **Table of Contents Extraction**: Extract complete TOC/bookmarks from PDF files
 - **Page Range Extraction**: Extract specific page ranges into new PDF files  
+- **Page to Image Conversion**: Convert PDF pages to high-quality PNG or JPEG images
+- **Text Extraction**: Extract text from PDF pages with optional Markdown formatting
 - **Robust Error Handling**: Comprehensive error handling for invalid files and ranges
 - **Fast PDF Processing**: Powered by PyMuPDF for efficient document processing
-- **Temporary File Management**: Automatic handling of extracted content with clean file paths
+- **Smart File Management**: Files are saved in the same directory as the source with 'mcp_' prefix
 
 ## Prerequisites
 
@@ -177,6 +179,14 @@ Once configured, you can test the integration by asking Claude:
 "Please extract pages 1-5 from /path/to/document.pdf"
 ```
 
+```
+"Convert pages 1-3 of /path/to/document.pdf to PNG images at 300 DPI"
+```
+
+```
+"Extract the text from pages 10-15 of /path/to/manual.pdf as Markdown"
+```
+
 ## Usage
 
 ### Available Tools
@@ -207,11 +217,48 @@ Extracts a range of pages from a PDF and creates a new PDF file.
 - `end_page` (int): Ending page number (1-based, inclusive)
 
 **Returns:**
-- str: Absolute path to the newly created PDF file
+- str: Absolute path to the newly created PDF file (saved with 'mcp_' prefix)
 
 **Example Usage in Claude Desktop:**
 ```
 "Extract pages 10-15 from /Users/john/Documents/report.pdf"
+```
+
+#### `get_pages_as_images(pdf_path: str, start_page: int, end_page: int, dpi: int = 150, image_format: str = "png")`
+
+Converts a range of pages from a PDF to image files.
+
+**Parameters:**
+- `pdf_path` (str): Absolute path to the source PDF
+- `start_page` (int): Starting page number (1-based, inclusive)
+- `end_page` (int): Ending page number (1-based, inclusive)
+- `dpi` (int, optional): Resolution in dots per inch (default: 150)
+- `image_format` (str, optional): Output format - "png" or "jpg" (default: "png")
+
+**Returns:**
+- List[str]: List of absolute paths to the created image files
+
+**Example Usage in Claude Desktop:**
+```
+"Convert pages 1-5 of /Users/john/Documents/presentation.pdf to PNG images at 300 DPI"
+```
+
+#### `extract_text_from_pages(pdf_path: str, start_page: int, end_page: int, markdown: bool = True)`
+
+Extracts text from a range of pages in a PDF.
+
+**Parameters:**
+- `pdf_path` (str): Absolute path to the PDF file
+- `start_page` (int): Starting page number (1-based, inclusive)
+- `end_page` (int): Ending page number (1-based, inclusive)
+- `markdown` (bool, optional): Return text in Markdown format (default: True)
+
+**Returns:**
+- str: Extracted text, optionally formatted as Markdown
+
+**Example Usage in Claude Desktop:**
+```
+"Extract text from pages 20-25 of /Users/john/Documents/ebook.pdf as Markdown"
 ```
 
 ### Standalone Usage
