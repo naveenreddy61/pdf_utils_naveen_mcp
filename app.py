@@ -14,6 +14,7 @@ from fastlite import *
 import pymupdf
 import pymupdf4llm
 from dataclasses import dataclass
+from starlette.requests import Request
 
 # Constants
 FILE_RETENTION_DAYS = 30
@@ -171,9 +172,29 @@ def index():
 
 
 @rt('/upload', methods=['POST'])
-async def upload(pdf_file: UploadFile):
+async def upload(request: Request):
     """Handle file upload with deduplication."""
     try:
+        # Get form data
+        form = await request.form()
+        pdf_file = form.get('pdf_file')
+        
+        # Debug logging
+        print(f"Form keys: {list(form.keys())}")
+        print(f"pdf_file type: {type(pdf_file)}")
+        
+        # Check if file was uploaded
+        if not pdf_file:
+            return page_with_result(
+                P("Error: No file was uploaded.", cls="error")
+            )
+        
+        # Check if it's a valid file upload
+        if not hasattr(pdf_file, 'filename'):
+            return page_with_result(
+                P(f"Error: Invalid file upload. Received type: {type(pdf_file)}", cls="error")
+            )
+        
         # Check file extension
         if not pdf_file.filename.lower().endswith('.pdf'):
             return page_with_result(
@@ -181,7 +202,9 @@ async def upload(pdf_file: UploadFile):
             )
         
         # Read file content
+        print(f"Reading file: {pdf_file.filename}")
         content = await pdf_file.read()
+        print(f"File size: {len(content)} bytes")
         
         # Check file size
         if len(content) > MAX_FILE_SIZE_BYTES:
@@ -207,7 +230,9 @@ async def upload(pdf_file: UploadFile):
             stored_filename = f"{file_hash[:8]}_{safe_filename}"
             file_path = UPLOAD_DIR / stored_filename
             
+            print(f"Saving file to: {file_path}")
             file_path.write_bytes(content)
+            print(f"File saved successfully")
             
             # Get PDF info
             doc = pymupdf.open(file_path)
@@ -271,6 +296,9 @@ async def upload(pdf_file: UploadFile):
         )
         
     except Exception as e:
+        print(f"Upload error: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return page_with_result(
             P(f"Error uploading file: {str(e)}", cls="error")
         )
