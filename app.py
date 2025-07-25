@@ -15,7 +15,6 @@ import pymupdf
 import pymupdf4llm
 from dataclasses import dataclass
 from starlette.requests import Request
-from starlette.responses import Response
 from apswutils.db import NotFoundError
 
 # Constants
@@ -31,6 +30,7 @@ UPLOAD_DIR.mkdir(exist_ok=True)
 
 # Initialize FastHTML app
 app, rt = fast_app(
+    static_path='uploads',
     hdrs=(
         Link(rel='stylesheet', href='https://cdn.jsdelivr.net/npm/normalize.css@8.0.1/normalize.min.css'),
         Script(src="https://unpkg.com/htmx.org@2.0.0"),
@@ -430,7 +430,7 @@ async def process_extract_pages(file_hash: str, start_page: int, end_page: int):
             H3("Pages Extracted Successfully"),
             P(f"Extracted pages {start_page} to {end_page}"),
             P(A("Download Extracted PDF", 
-                href=f"/files/{output_filename}",
+                href=f"/{output_filename}",
                 download=output_filename,
                 cls="button")),
             cls="result-area"
@@ -528,8 +528,8 @@ async def process_convert_images(file_hash: str, start_page: int, end_page: int,
                 image_elements.append(
                     Div(
                         A(
-                            Img(src=f"/files/{img_file}", cls="image-thumb"),
-                            href=f"/files/{img_file}",
+                            Img(src=f"/{img_file}", cls="image-thumb"),
+                            href=f"/{img_file}",
                             download=img_file
                         )
                     )
@@ -627,7 +627,7 @@ async def process_extract_text(file_hash: str, start_page: int, end_page: int,
             P(f"Extracted {'Markdown' if use_markdown else 'plain text'} from pages {start_page} to {end_page}"),
             P(f"Total characters: {len(text_content)}"),
             P(A("Download Full Text", 
-                href=f"/files/{text_filename}",
+                href=f"/{text_filename}",
                 download=text_filename,
                 cls="button")),
             H4("Preview:"),
@@ -639,40 +639,6 @@ async def process_extract_text(file_hash: str, start_page: int, end_page: int,
         return Div(P(f"Error extracting text: {str(e)}", cls="error"))
 
 
-@rt('/test-route')
-def test_route():
-    """Test route to verify routing is working."""
-    print("TEST ROUTE CALLED - Routing is working!")
-    return "Test route is working!"
-
-
-@rt('/files/{filename}')
-async def download(filename: str):
-    """Serve files for download."""
-    file_path = UPLOAD_DIR / filename
-    
-    print(f"Download request for: {filename}")
-    print(f"Looking for file at: {file_path.resolve()}")
-    print(f"Upload directory contents: {list(UPLOAD_DIR.glob('*'))}")
-    
-    if not file_path.exists():
-        print(f"ERROR: File not found: {file_path}")
-        return Response(content=f"File not found: {filename}", status_code=404)
-    
-    if not file_path.is_file():
-        print(f"ERROR: Path is not a file: {file_path}")
-        return Response(content=f"Invalid file: {filename}", status_code=404)
-    
-    file_size = file_path.stat().st_size
-    print(f"Serving file: {filename} ({file_size} bytes)")
-    
-    try:
-        response = FileResponse(str(file_path))
-        print(f"FileResponse created successfully for: {filename}")
-        return response
-    except Exception as e:
-        print(f"ERROR creating FileResponse: {e}")
-        return Response(content=f"Error serving file: {e}", status_code=500)
 
 
 @rt('/cleanup')
@@ -706,14 +672,10 @@ async def daily_cleanup():
 @app.on_event("startup")
 async def startup_event():
     """Start background tasks on app startup."""
-    print("=== APP STARTUP ===")
+    print("=== PDF MCP SERVER STARTUP ===")
     print(f"Upload directory: {UPLOAD_DIR.resolve()}")
     print(f"Upload directory exists: {UPLOAD_DIR.exists()}")
-    print("Routes registered:")
-    for route in app.routes:
-        print(f"  {route.methods if hasattr(route, 'methods') else 'N/A'} {route.path}")
-        if hasattr(route, 'endpoint'):
-            print(f"    -> {route.endpoint.__name__}")
+    print(f"Static files served from: uploads/")
     print("=== STARTUP COMPLETE ===")
     asyncio.create_task(daily_cleanup())
 
