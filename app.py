@@ -113,7 +113,7 @@ async def cleanup_old_files():
 def index():
     """Main page with file upload form."""
     return Titled("PDF Utilities",
-        Container(
+        Div(
             H2("PDF Processing Tools"),
             P("Upload a PDF file to use various processing tools. Files are kept for 30 days."),
             P(f"Maximum file size: {MAX_FILE_SIZE_MB}MB"),
