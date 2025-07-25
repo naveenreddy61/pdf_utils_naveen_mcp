@@ -15,6 +15,7 @@ import pymupdf
 import pymupdf4llm
 from dataclasses import dataclass
 from starlette.requests import Request
+from starlette.responses import Response
 from apswutils.db import NotFoundError
 
 # Constants
@@ -429,7 +430,7 @@ async def process_extract_pages(file_hash: str, start_page: int, end_page: int):
             H3("Pages Extracted Successfully"),
             P(f"Extracted pages {start_page} to {end_page}"),
             P(A("Download Extracted PDF", 
-                href=f"/download/{output_filename}",
+                href=f"/files/{output_filename}",
                 download=output_filename,
                 cls="button")),
             cls="result-area"
@@ -527,8 +528,8 @@ async def process_convert_images(file_hash: str, start_page: int, end_page: int,
                 image_elements.append(
                     Div(
                         A(
-                            Img(src=f"/download/{img_file}", cls="image-thumb"),
-                            href=f"/download/{img_file}",
+                            Img(src=f"/files/{img_file}", cls="image-thumb"),
+                            href=f"/files/{img_file}",
                             download=img_file
                         )
                     )
@@ -626,7 +627,7 @@ async def process_extract_text(file_hash: str, start_page: int, end_page: int,
             P(f"Extracted {'Markdown' if use_markdown else 'plain text'} from pages {start_page} to {end_page}"),
             P(f"Total characters: {len(text_content)}"),
             P(A("Download Full Text", 
-                href=f"/download/{text_filename}",
+                href=f"/files/{text_filename}",
                 download=text_filename,
                 cls="button")),
             H4("Preview:"),
@@ -638,7 +639,14 @@ async def process_extract_text(file_hash: str, start_page: int, end_page: int,
         return Div(P(f"Error extracting text: {str(e)}", cls="error"))
 
 
-@rt('/download/{filename}')
+@rt('/test-route')
+def test_route():
+    """Test route to verify routing is working."""
+    print("TEST ROUTE CALLED - Routing is working!")
+    return "Test route is working!"
+
+
+@rt('/files/{filename}')
 async def download(filename: str):
     """Serve files for download."""
     file_path = UPLOAD_DIR / filename
@@ -658,7 +666,13 @@ async def download(filename: str):
     file_size = file_path.stat().st_size
     print(f"Serving file: {filename} ({file_size} bytes)")
     
-    return FileResponse(file_path)
+    try:
+        response = FileResponse(str(file_path))
+        print(f"FileResponse created successfully for: {filename}")
+        return response
+    except Exception as e:
+        print(f"ERROR creating FileResponse: {e}")
+        return Response(content=f"Error serving file: {e}", status_code=500)
 
 
 @rt('/cleanup')
@@ -692,6 +706,15 @@ async def daily_cleanup():
 @app.on_event("startup")
 async def startup_event():
     """Start background tasks on app startup."""
+    print("=== APP STARTUP ===")
+    print(f"Upload directory: {UPLOAD_DIR.resolve()}")
+    print(f"Upload directory exists: {UPLOAD_DIR.exists()}")
+    print("Routes registered:")
+    for route in app.routes:
+        print(f"  {route.methods if hasattr(route, 'methods') else 'N/A'} {route.path}")
+        if hasattr(route, 'endpoint'):
+            print(f"    -> {route.endpoint.__name__}")
+    print("=== STARTUP COMPLETE ===")
     asyncio.create_task(daily_cleanup())
 
 
