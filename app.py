@@ -118,7 +118,7 @@ def index():
             P("Upload a PDF file to use various processing tools. Files are kept for 30 days."),
             P(f"Maximum file size: {MAX_FILE_SIZE_MB}MB"),
             
-            Form(enctype="multipart/form-data",
+            Form(
                 Div(
                     Input(type="file", name="pdf_file", accept=".pdf", 
                           id="file-input", style="display: none;",
@@ -129,7 +129,8 @@ def index():
                     Div(id="upload-spinner", cls="spinner", style="display: none;"),
                     cls="upload-container"
                 ),
-                id="upload-form"
+                id="upload-form",
+                enctype="multipart/form-data"
             ),
             
             Div(id="upload-result"),
