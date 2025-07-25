@@ -401,6 +401,9 @@ async def process_extract_pages(file_hash: str, start_page: int, end_page: int):
             return Div(P("Invalid page range.", cls="error"))
         
         # Extract pages
+        print(f"Extracting pages {start_page} to {end_page} from: {file_path}")
+        print(f"Upload directory: {UPLOAD_DIR.resolve()}")
+        
         source_doc = pymupdf.open(file_path)
         new_doc = pymupdf.open()
         new_doc.insert_pdf(source_doc, from_page=start_page - 1, to_page=end_page - 1)
@@ -409,9 +412,18 @@ async def process_extract_pages(file_hash: str, start_page: int, end_page: int):
         output_filename = f"mcp_{file_info.stored_filename.replace('.pdf', '')}_pages_{start_page}_to_{end_page}.pdf"
         output_path = UPLOAD_DIR / output_filename
         
-        new_doc.save(output_path, garbage=4, deflate=True)
+        print(f"Saving extracted PDF to: {output_path.resolve()}")
+        new_doc.save(str(output_path), garbage=4, deflate=True)
         new_doc.close()
         source_doc.close()
+        
+        # Verify file was created
+        if output_path.exists():
+            file_size = output_path.stat().st_size
+            print(f"PDF saved successfully: {output_filename} ({file_size} bytes)")
+        else:
+            print(f"ERROR: Failed to create PDF file: {output_path}")
+            return Div(P("Failed to create extracted PDF file.", cls="error"))
         
         return Div(
             H3("Pages Extracted Successfully"),
@@ -481,6 +493,9 @@ async def process_convert_images(file_hash: str, start_page: int, end_page: int,
         doc = pymupdf.open(file_path)
         image_files = []
         
+        print(f"Converting pages {start_page} to {end_page} from: {file_path}")
+        print(f"Upload directory: {UPLOAD_DIR.resolve()}")
+        
         for page_num in range(start_page, end_page + 1):
             page = doc[page_num - 1]
             pix = page.get_pixmap(dpi=dpi)
@@ -488,8 +503,17 @@ async def process_convert_images(file_hash: str, start_page: int, end_page: int,
             output_filename = f"mcp_{file_info.stored_filename.replace('.pdf', '')}_page_{page_num}.{image_format}"
             output_path = UPLOAD_DIR / output_filename
             
-            pix.save(output_path)
-            image_files.append(output_filename)
+            print(f"Saving image to: {output_path.resolve()}")
+            pix.save(str(output_path))
+            
+            # Verify file was created
+            if output_path.exists():
+                file_size = output_path.stat().st_size
+                print(f"Image saved successfully: {output_filename} ({file_size} bytes)")
+                image_files.append(output_filename)
+            else:
+                print(f"ERROR: Failed to create image file: {output_path}")
+                
             pix = None
         
         doc.close()
@@ -497,15 +521,23 @@ async def process_convert_images(file_hash: str, start_page: int, end_page: int,
         # Create image gallery
         image_elements = []
         for img_file in image_files:
-            image_elements.append(
-                Div(
-                    A(
-                        Img(src=f"/download/{img_file}", cls="image-thumb"),
-                        href=f"/download/{img_file}",
-                        download=img_file
+            # Double-check file exists before adding to gallery
+            img_path = UPLOAD_DIR / img_file
+            if img_path.exists():
+                image_elements.append(
+                    Div(
+                        A(
+                            Img(src=f"/download/{img_file}", cls="image-thumb"),
+                            href=f"/download/{img_file}",
+                            download=img_file
+                        )
                     )
                 )
-            )
+            else:
+                print(f"WARNING: Image file missing when creating gallery: {img_path}")
+        
+        if not image_elements:
+            return Div(P("No image files were successfully created.", cls="error"))
         
         return Div(
             H3("Images Generated Successfully"),
@@ -610,8 +642,21 @@ async def process_extract_text(file_hash: str, start_page: int, end_page: int,
 async def download(filename: str):
     """Serve files for download."""
     file_path = UPLOAD_DIR / filename
-    if not file_path.exists() or not file_path.is_file():
-        return Response(content="File not found", status_code=404)
+    
+    print(f"Download request for: {filename}")
+    print(f"Looking for file at: {file_path.resolve()}")
+    print(f"Upload directory contents: {list(UPLOAD_DIR.glob('*'))}")
+    
+    if not file_path.exists():
+        print(f"ERROR: File not found: {file_path}")
+        return Response(content=f"File not found: {filename}", status_code=404)
+    
+    if not file_path.is_file():
+        print(f"ERROR: Path is not a file: {file_path}")
+        return Response(content=f"Invalid file: {filename}", status_code=404)
+    
+    file_size = file_path.stat().st_size
+    print(f"Serving file: {filename} ({file_size} bytes)")
     
     return FileResponse(file_path)
 
