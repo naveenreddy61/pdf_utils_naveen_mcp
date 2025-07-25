@@ -15,6 +15,7 @@ import pymupdf
 import pymupdf4llm
 from dataclasses import dataclass
 from starlette.requests import Request
+from apswutils.db import NotFoundError
 
 # Constants
 FILE_RETENTION_DAYS = 30
@@ -91,6 +92,14 @@ files = db.create(FileRecord, pk='file_hash')
 def calculate_file_hash(file_content: bytes) -> str:
     """Calculate SHA-256 hash of file content."""
     return hashlib.sha256(file_content).hexdigest()
+
+
+def get_file_info(file_hash: str):
+    """Get file info from database, returns None if not found."""
+    try:
+        return files.get(file_hash)
+    except NotFoundError:
+        return None
 
 
 def sanitize_filename(filename: str) -> str:
@@ -216,7 +225,7 @@ async def upload(request: Request):
         file_hash = calculate_file_hash(content)
         
         # Check if file already exists
-        existing = files.get(file_hash)
+        existing = get_file_info(file_hash)
         
         if existing:
             # Update last accessed time
@@ -308,7 +317,7 @@ async def upload(request: Request):
 def process_toc(file_hash: str):
     """Extract and display table of contents."""
     try:
-        file_info = files.get(file_hash)
+        file_info = get_file_info(file_hash)
         if not file_info:
             return Div(P("File not found.", cls="error"))
         
@@ -355,7 +364,7 @@ def process_toc(file_hash: str):
 @rt('/extract-pages-form/{file_hash}')
 def extract_pages_form(file_hash: str):
     """Show form for page extraction."""
-    file_info = files.get(file_hash)
+    file_info = get_file_info(file_hash)
     if not file_info:
         return Div(P("File not found.", cls="error"))
     
@@ -381,7 +390,7 @@ def extract_pages_form(file_hash: str):
 async def process_extract_pages(file_hash: str, start_page: int, end_page: int):
     """Extract specified pages from PDF."""
     try:
-        file_info = files.get(file_hash)
+        file_info = get_file_info(file_hash)
         if not file_info:
             return Div(P("File not found.", cls="error"))
         
@@ -421,7 +430,7 @@ async def process_extract_pages(file_hash: str, start_page: int, end_page: int):
 @rt('/convert-images-form/{file_hash}')
 def convert_images_form(file_hash: str):
     """Show form for image conversion."""
-    file_info = files.get(file_hash)
+    file_info = get_file_info(file_hash)
     if not file_info:
         return Div(P("File not found.", cls="error"))
     
@@ -458,7 +467,7 @@ async def process_convert_images(file_hash: str, start_page: int, end_page: int,
                                 dpi: int = 150, image_format: str = "png"):
     """Convert specified pages to images."""
     try:
-        file_info = files.get(file_hash)
+        file_info = get_file_info(file_hash)
         if not file_info:
             return Div(P("File not found.", cls="error"))
         
@@ -512,7 +521,7 @@ async def process_convert_images(file_hash: str, start_page: int, end_page: int,
 @rt('/extract-text-form/{file_hash}')
 def extract_text_form(file_hash: str):
     """Show form for text extraction."""
-    file_info = files.get(file_hash)
+    file_info = get_file_info(file_hash)
     if not file_info:
         return Div(P("File not found.", cls="error"))
     
@@ -543,7 +552,7 @@ async def process_extract_text(file_hash: str, start_page: int, end_page: int,
                               markdown: Optional[str] = None):
     """Extract text from specified pages."""
     try:
-        file_info = files.get(file_hash)
+        file_info = get_file_info(file_hash)
         if not file_info:
             return Div(P("File not found.", cls="error"))
         
