@@ -13,6 +13,7 @@ from fasthtml.common import *
 from fastlite import *
 import pymupdf
 import pymupdf4llm
+from dataclasses import dataclass
 
 # Constants
 FILE_RETENTION_DAYS = 30
@@ -53,20 +54,20 @@ app, rt = fast_app(
     )
 )
 
+# Define database model
+@dataclass
+class FileRecord:
+    file_hash: str  # Primary key
+    original_filename: str
+    stored_filename: str
+    file_size: int
+    page_count: int
+    upload_date: str
+    last_accessed: str
+
 # Initialize database
 db = database(DB_PATH)
-files = db.create(
-    Dict(
-        file_hash=str,  # Primary key
-        original_filename=str,
-        stored_filename=str,
-        file_size=int,
-        page_count=int,
-        upload_date=str,
-        last_accessed=str
-    ),
-    pk='file_hash'
-)
+files = db.create(FileRecord, pk='file_hash')
 
 
 def calculate_file_hash(file_content: bytes) -> str:
@@ -94,16 +95,16 @@ async def cleanup_old_files():
     
     for file_record in old_files:
         # Delete the physical file
-        file_path = UPLOAD_DIR / file_record['stored_filename']
+        file_path = UPLOAD_DIR / file_record.stored_filename
         if file_path.exists():
             file_path.unlink()
         
         # Delete processed files (with mcp_ prefix)
-        for f in UPLOAD_DIR.glob(f"mcp_{file_record['stored_filename'].replace('.pdf', '')}_*"):
+        for f in UPLOAD_DIR.glob(f"mcp_{file_record.stored_filename.replace('.pdf', '')}_*"):
             f.unlink()
         
         # Remove from database
-        files.delete(file_record['file_hash'])
+        files.delete(file_record.file_hash)
     
     return len(old_files)
 
@@ -218,8 +219,8 @@ async def upload(pdf_file: UploadFile):
         if existing:
             # Update last accessed time
             files.update({'last_accessed': datetime.now().isoformat()}, file_hash)
-            stored_filename = existing['stored_filename']
-            page_count = existing['page_count']
+            stored_filename = existing.stored_filename
+            page_count = existing.page_count
             file_info = existing
         else:
             # Save new file
@@ -235,23 +236,23 @@ async def upload(pdf_file: UploadFile):
             doc.close()
             
             # Store in database
-            file_info = {
-                'file_hash': file_hash,
-                'original_filename': pdf_file.filename,
-                'stored_filename': stored_filename,
-                'file_size': len(content),
-                'page_count': page_count,
-                'upload_date': datetime.now().isoformat(),
-                'last_accessed': datetime.now().isoformat()
-            }
+            file_info = FileRecord(
+                file_hash=file_hash,
+                original_filename=pdf_file.filename,
+                stored_filename=stored_filename,
+                file_size=len(content),
+                page_count=page_count,
+                upload_date=datetime.now().isoformat(),
+                last_accessed=datetime.now().isoformat()
+            )
             files.insert(file_info)
         
         # Return file info and operation buttons
         return Div(
             Div(
                 H3("File Information"),
-                P(f"Original name: {file_info['original_filename']}"),
-                P(f"Size: {file_info['file_size'] / 1024 / 1024:.2f} MB"),
+                P(f"Original name: {file_info.original_filename}"),
+                P(f"Size: {file_info.file_size / 1024 / 1024:.2f} MB"),
                 P(f"Pages: {page_count}"),
                 P("File uploaded successfully!" if not existing else "File already exists, using cached version.", 
                   cls="success" if not existing else "warning"),
@@ -305,7 +306,7 @@ def process_toc(file_hash: str):
         if not file_info:
             return Div(P("File not found.", cls="error"))
         
-        file_path = UPLOAD_DIR / file_info['stored_filename']
+        file_path = UPLOAD_DIR / file_info.stored_filename
         
         # Extract TOC
         doc = pymupdf.open(file_path)
@@ -354,14 +355,14 @@ def extract_pages_form(file_hash: str):
     
     return Div(
         H3("Extract Pages"),
-        P(f"Total pages: {file_info['page_count']}"),
+        P(f"Total pages: {file_info.page_count}"),
         Form(
             Label("Start Page:", Input(type="number", name="start_page", 
-                                      min="1", max=str(file_info['page_count']), 
+                                      min="1", max=str(file_info.page_count), 
                                       value="1", required=True)),
             Label("End Page:", Input(type="number", name="end_page", 
-                                    min="1", max=str(file_info['page_count']), 
-                                    value=str(file_info['page_count']), required=True)),
+                                    min="1", max=str(file_info.page_count), 
+                                    value=str(file_info.page_count), required=True)),
             Button("Extract Pages", type="submit"),
             hx_post=f"/process/extract-pages/{file_hash}",
             hx_target="#operation-result"
@@ -378,10 +379,10 @@ async def process_extract_pages(file_hash: str, start_page: int, end_page: int):
         if not file_info:
             return Div(P("File not found.", cls="error"))
         
-        file_path = UPLOAD_DIR / file_info['stored_filename']
+        file_path = UPLOAD_DIR / file_info.stored_filename
         
         # Validate page range
-        if start_page < 1 or end_page > file_info['page_count'] or start_page > end_page:
+        if start_page < 1 or end_page > file_info.page_count or start_page > end_page:
             return Div(P("Invalid page range.", cls="error"))
         
         # Extract pages
@@ -390,7 +391,7 @@ async def process_extract_pages(file_hash: str, start_page: int, end_page: int):
         new_doc.insert_pdf(source_doc, from_page=start_page - 1, to_page=end_page - 1)
         
         # Save extracted pages
-        output_filename = f"mcp_{file_info['stored_filename'].replace('.pdf', '')}_pages_{start_page}_to_{end_page}.pdf"
+        output_filename = f"mcp_{file_info.stored_filename.replace('.pdf', '')}_pages_{start_page}_to_{end_page}.pdf"
         output_path = UPLOAD_DIR / output_filename
         
         new_doc.save(output_path, garbage=4, deflate=True)
@@ -420,14 +421,14 @@ def convert_images_form(file_hash: str):
     
     return Div(
         H3("Convert Pages to Images"),
-        P(f"Total pages: {file_info['page_count']}"),
+        P(f"Total pages: {file_info.page_count}"),
         Form(
             Label("Start Page:", Input(type="number", name="start_page", 
-                                      min="1", max=str(file_info['page_count']), 
+                                      min="1", max=str(file_info.page_count), 
                                       value="1", required=True)),
             Label("End Page:", Input(type="number", name="end_page", 
-                                    min="1", max=str(file_info['page_count']), 
-                                    value=str(min(5, file_info['page_count'])), required=True)),
+                                    min="1", max=str(file_info.page_count), 
+                                    value=str(min(5, file_info.page_count)), required=True)),
             Label("DPI:", Input(type="number", name="dpi", 
                                min="72", max="300", value="150", required=True)),
             Label("Format:", 
@@ -455,10 +456,10 @@ async def process_convert_images(file_hash: str, start_page: int, end_page: int,
         if not file_info:
             return Div(P("File not found.", cls="error"))
         
-        file_path = UPLOAD_DIR / file_info['stored_filename']
+        file_path = UPLOAD_DIR / file_info.stored_filename
         
         # Validate page range
-        if start_page < 1 or end_page > file_info['page_count'] or start_page > end_page:
+        if start_page < 1 or end_page > file_info.page_count or start_page > end_page:
             return Div(P("Invalid page range.", cls="error"))
         
         # Convert pages to images
@@ -469,7 +470,7 @@ async def process_convert_images(file_hash: str, start_page: int, end_page: int,
             page = doc[page_num - 1]
             pix = page.get_pixmap(dpi=dpi)
             
-            output_filename = f"mcp_{file_info['stored_filename'].replace('.pdf', '')}_page_{page_num}.{image_format}"
+            output_filename = f"mcp_{file_info.stored_filename.replace('.pdf', '')}_page_{page_num}.{image_format}"
             output_path = UPLOAD_DIR / output_filename
             
             pix.save(output_path)
@@ -511,14 +512,14 @@ def extract_text_form(file_hash: str):
     
     return Div(
         H3("Extract Text"),
-        P(f"Total pages: {file_info['page_count']}"),
+        P(f"Total pages: {file_info.page_count}"),
         Form(
             Label("Start Page:", Input(type="number", name="start_page", 
-                                      min="1", max=str(file_info['page_count']), 
+                                      min="1", max=str(file_info.page_count), 
                                       value="1", required=True)),
             Label("End Page:", Input(type="number", name="end_page", 
-                                    min="1", max=str(file_info['page_count']), 
-                                    value=str(file_info['page_count']), required=True)),
+                                    min="1", max=str(file_info.page_count), 
+                                    value=str(file_info.page_count), required=True)),
             Label(Input(type="checkbox", name="markdown", checked=True),
                   " Extract as Markdown"),
             Button("Extract Text", type="submit"),
@@ -540,10 +541,10 @@ async def process_extract_text(file_hash: str, start_page: int, end_page: int,
         if not file_info:
             return Div(P("File not found.", cls="error"))
         
-        file_path = UPLOAD_DIR / file_info['stored_filename']
+        file_path = UPLOAD_DIR / file_info.stored_filename
         
         # Validate page range
-        if start_page < 1 or end_page > file_info['page_count'] or start_page > end_page:
+        if start_page < 1 or end_page > file_info.page_count or start_page > end_page:
             return Div(P("Invalid page range.", cls="error"))
         
         use_markdown = markdown == "on"
@@ -566,7 +567,7 @@ async def process_extract_text(file_hash: str, start_page: int, end_page: int,
             text_content = "\n\n".join(text_parts)
         
         # Save text to file for download
-        text_filename = f"mcp_{file_info['stored_filename'].replace('.pdf', '')}_text_p{start_page}-{end_page}.{'md' if use_markdown else 'txt'}"
+        text_filename = f"mcp_{file_info.stored_filename.replace('.pdf', '')}_text_p{start_page}-{end_page}.{'md' if use_markdown else 'txt'}"
         text_path = UPLOAD_DIR / text_filename
         text_path.write_text(text_content, encoding='utf-8')
         
