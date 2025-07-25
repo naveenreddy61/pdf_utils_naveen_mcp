@@ -33,8 +33,6 @@ app, rt = fast_app(
         Style("""
             body { font-family: system-ui, -apple-system, sans-serif; max-width: 1200px; margin: 0 auto; padding: 20px; }
             .container { background: #f5f5f5; padding: 2rem; border-radius: 8px; margin: 1rem 0; }
-            .upload-area { border: 2px dashed #ccc; padding: 2rem; text-align: center; margin: 1rem 0; }
-            .upload-area.dragover { border-color: #007bff; background: #e9f3ff; }
             .file-info { background: white; padding: 1rem; margin: 1rem 0; border-radius: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
             .operation-buttons { display: flex; gap: 10px; flex-wrap: wrap; margin: 1rem 0; }
             .operation-buttons button { flex: 1; min-width: 150px; }
@@ -109,6 +107,32 @@ async def cleanup_old_files():
     return len(old_files)
 
 
+def upload_form():
+    """Return the upload form component."""
+    return Form(
+        Input(type="file", name="pdf_file", accept=".pdf", 
+              onchange="this.form.submit()", 
+              style="margin-bottom: 1rem;"),
+        method="post",
+        action="/upload",
+        enctype="multipart/form-data"
+    )
+
+
+def page_with_result(result_content):
+    """Return a full page with upload form and result content."""
+    return Titled("PDF Utilities",
+        Div(
+            H2("PDF Processing Tools"),
+            P("Upload a PDF file to use various processing tools. Files are kept for 30 days."),
+            P(f"Maximum file size: {MAX_FILE_SIZE_MB}MB"),
+            upload_form(),
+            result_content,
+            cls="container"
+        )
+    )
+
+
 @rt('/')
 def index():
     """Main page with file upload form."""
@@ -118,87 +142,23 @@ def index():
             P("Upload a PDF file to use various processing tools. Files are kept for 30 days."),
             P(f"Maximum file size: {MAX_FILE_SIZE_MB}MB"),
             
-            Form(
-                Div(
-                    Input(type="file", name="pdf_file", accept=".pdf", 
-                          id="file-input", style="display: none;",
-                          hx_post="/upload", hx_target="#upload-result",
-                          hx_indicator="#upload-spinner"),
-                    Label("Click to select or drag and drop a PDF file here",
-                          for_="file-input", cls="upload-area", id="upload-area"),
-                    Div(id="upload-spinner", cls="spinner", style="display: none;"),
-                    cls="upload-container"
-                ),
-                id="upload-form",
-                enctype="multipart/form-data"
-            ),
+            upload_form(),
             
             Div(id="upload-result"),
-            
-            Script("""
-                // Drag and drop functionality
-                const uploadArea = document.getElementById('upload-area');
-                const fileInput = document.getElementById('file-input');
-                
-                ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-                    uploadArea.addEventListener(eventName, preventDefaults, false);
-                });
-                
-                function preventDefaults(e) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                }
-                
-                ['dragenter', 'dragover'].forEach(eventName => {
-                    uploadArea.addEventListener(eventName, highlight, false);
-                });
-                
-                ['dragleave', 'drop'].forEach(eventName => {
-                    uploadArea.addEventListener(eventName, unhighlight, false);
-                });
-                
-                function highlight(e) {
-                    uploadArea.classList.add('dragover');
-                }
-                
-                function unhighlight(e) {
-                    uploadArea.classList.remove('dragover');
-                }
-                
-                uploadArea.addEventListener('drop', handleDrop, false);
-                
-                function handleDrop(e) {
-                    const dt = e.dataTransfer;
-                    const files = dt.files;
-                    
-                    if (files.length > 0 && files[0].type === 'application/pdf') {
-                        fileInput.files = files;
-                        htmx.trigger(fileInput, 'change');
-                    }
-                }
-                
-                // Trigger upload on file selection
-                fileInput.addEventListener('change', function() {
-                    if (this.files.length > 0) {
-                        htmx.trigger(this, 'upload');
-                    }
-                });
-            """),
             
             cls="container"
         )
     )
 
 
-@rt('/upload')
+@rt('/upload', methods=['POST'])
 async def upload(pdf_file: UploadFile):
     """Handle file upload with deduplication."""
     try:
         # Check file extension
         if not pdf_file.filename.lower().endswith('.pdf'):
-            return Div(
-                P("Error: Only PDF files are allowed.", cls="error"),
-                id="upload-result"
+            return page_with_result(
+                P("Error: Only PDF files are allowed.", cls="error")
             )
         
         # Read file content
@@ -206,9 +166,8 @@ async def upload(pdf_file: UploadFile):
         
         # Check file size
         if len(content) > MAX_FILE_SIZE_BYTES:
-            return Div(
-                P(f"Error: File size exceeds {MAX_FILE_SIZE_MB}MB limit.", cls="error"),
-                id="upload-result"
+            return page_with_result(
+                P(f"Error: File size exceeds {MAX_FILE_SIZE_MB}MB limit.", cls="error")
             )
         
         # Calculate hash
@@ -249,53 +208,52 @@ async def upload(pdf_file: UploadFile):
             files.insert(file_info)
         
         # Return file info and operation buttons
-        return Div(
+        return page_with_result(
             Div(
-                H3("File Information"),
-                P(f"Original name: {file_info.original_filename}"),
-                P(f"Size: {file_info.file_size / 1024 / 1024:.2f} MB"),
-                P(f"Pages: {page_count}"),
-                P("File uploaded successfully!" if not existing else "File already exists, using cached version.", 
-                  cls="success" if not existing else "warning"),
-                cls="file-info"
-            ),
-            
-            Div(
-                H3("Available Operations"),
                 Div(
-                    Button("Extract Table of Contents", 
-                           hx_post=f"/process/toc/{file_hash}",
-                           hx_target="#operation-result",
-                           cls="button"),
-                    
-                    Button("Extract Pages", 
-                           hx_get=f"/extract-pages-form/{file_hash}",
-                           hx_target="#operation-result",
-                           cls="button"),
-                    
-                    Button("Convert to Images", 
-                           hx_get=f"/convert-images-form/{file_hash}",
-                           hx_target="#operation-result",
-                           cls="button"),
-                    
-                    Button("Extract Text", 
-                           hx_get=f"/extract-text-form/{file_hash}",
-                           hx_target="#operation-result",
-                           cls="button"),
-                    
-                    cls="operation-buttons"
-                )
-            ),
-            
-            Div(id="operation-result"),
-            
-            id="upload-result"
+                    H3("File Information"),
+                    P(f"Original name: {file_info.original_filename}"),
+                    P(f"Size: {file_info.file_size / 1024 / 1024:.2f} MB"),
+                    P(f"Pages: {page_count}"),
+                    P("File uploaded successfully!" if not existing else "File already exists, using cached version.", 
+                      cls="success" if not existing else "warning"),
+                    cls="file-info"
+                ),
+                
+                Div(
+                    H3("Available Operations"),
+                    Div(
+                        Button("Extract Table of Contents", 
+                               hx_post=f"/process/toc/{file_hash}",
+                               hx_target="#operation-result",
+                               cls="button"),
+                        
+                        Button("Extract Pages", 
+                               hx_get=f"/extract-pages-form/{file_hash}",
+                               hx_target="#operation-result",
+                               cls="button"),
+                        
+                        Button("Convert to Images", 
+                               hx_get=f"/convert-images-form/{file_hash}",
+                               hx_target="#operation-result",
+                               cls="button"),
+                        
+                        Button("Extract Text", 
+                               hx_get=f"/extract-text-form/{file_hash}",
+                               hx_target="#operation-result",
+                               cls="button"),
+                        
+                        cls="operation-buttons"
+                    )
+                ),
+                
+                Div(id="operation-result")
+            )
         )
         
     except Exception as e:
-        return Div(
-            P(f"Error uploading file: {str(e)}", cls="error"),
-            id="upload-result"
+        return page_with_result(
+            P(f"Error uploading file: {str(e)}", cls="error")
         )
 
 
