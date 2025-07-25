@@ -9,3 +9,9 @@ wheels/
 # Virtual environments
 .venv
 CLAUDE.md
+
+# Application data
+uploads/
+*.db
+*.db-*
+pdf_files.db
