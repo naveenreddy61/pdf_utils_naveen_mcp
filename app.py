@@ -75,7 +75,8 @@ app, rt = fast_app(
 )
 
 # Enable static file serving for all default extensions including .md and .txt
-app.static_route_exts()
+# Must use same static_path as fast_app() to avoid path mismatch
+app.static_route_exts(static_path='uploads')
 
 # Define database model
 @dataclass
