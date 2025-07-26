@@ -1,16 +1,33 @@
-# PDF MCP Server
+# PDF MCP Server & Web Application
 
-A powerful Model Context Protocol (MCP) server that enables AI assistants like Claude to interact with PDF documents using PyMuPDF. This server provides tools for extracting table of contents, page ranges, and other PDF manipulation capabilities.
+A powerful Model Context Protocol (MCP) server and web application that enables AI assistants like Claude to interact with PDF documents using PyMuPDF. This project provides both:
+
+1. **MCP Server**: API tools for AI assistants to process PDFs programmatically
+2. **FastHTML Web App**: User-friendly web interface for PDF processing
 
 ## Features
 
+### Common Features (MCP Server & Web App)
 - **Table of Contents Extraction**: Extract complete TOC/bookmarks from PDF files
 - **Page Range Extraction**: Extract specific page ranges into new PDF files  
 - **Page to Image Conversion**: Convert PDF pages to high-quality PNG or JPEG images
 - **Text Extraction**: Extract text from PDF pages with optional Markdown formatting
 - **Robust Error Handling**: Comprehensive error handling for invalid files and ranges
 - **Fast PDF Processing**: Powered by PyMuPDF for efficient document processing
+
+### MCP Server Features
 - **Smart File Management**: Files are saved in the same directory as the source with 'mcp_' prefix
+- **Programmatic Access**: AI assistants can process PDFs through natural language
+
+### Web Application Features
+- **Drag-and-Drop Upload**: Easy file uploading with automatic processing
+- **Interactive UI**: Clean, responsive interface built with FastHTML
+- **Real-time Processing**: Instant feedback with loading indicators
+- **Copy to Clipboard**: One-click text copying for extracted content
+- **Download Results**: Download extracted pages, images, and text files
+- **File Deduplication**: Automatic detection and reuse of previously uploaded files
+- **Auto-cleanup**: 30-day retention policy with automatic file cleanup
+- **Visual TOC Display**: Hierarchical table of contents with page numbers
 
 ## Prerequisites
 
@@ -23,8 +40,8 @@ A powerful Model Context Protocol (MCP) server that enables AI assistants like C
 
 1. **Clone the repository**:
    ```bash
-   git clone <repository-url>
-   cd pdf-mcp-server
+   git clone https://github.com/naveenreddy61/pdf_utils_naveen_mcp_server.git
+   cd pdf_utils_naveen_mcp_server
    ```
 
 2. **Install dependencies**:
@@ -32,16 +49,22 @@ A powerful Model Context Protocol (MCP) server that enables AI assistants like C
    uv sync
    ```
 
-3. **Test the installation**:
+3. **Test the MCP server**:
    ```bash
    uv run pdf-mcp-server
+   ```
+
+4. **Test the web application**:
+   ```bash
+   uv run python app.py
+   # Then open http://localhost:8000 in your browser
    ```
 
 ### For Production
 
 Install directly from the repository:
 ```bash
-pip install git+<repository-url>
+pip install git+https://github.com/naveenreddy61/pdf_utils_naveen_mcp_server.git
 ```
 
 ## Claude Desktop Configuration
@@ -187,7 +210,75 @@ Once configured, you can test the integration by asking Claude:
 "Extract the text from pages 10-15 of /path/to/manual.pdf as Markdown"
 ```
 
-## Usage
+## Web Application Usage
+
+The FastHTML web application provides an intuitive interface for PDF processing without needing to use command-line tools.
+
+### Running the Web Application
+
+1. **Start the server**:
+   ```bash
+   # Using uv (recommended)
+   uv run python app.py
+   
+   # Or using Python directly
+   python app.py
+   ```
+
+2. **Access the application**:
+   Open your browser and navigate to `http://localhost:8000`
+
+### Web Interface Guide
+
+1. **Upload a PDF**:
+   - Click "Choose File" or drag and drop a PDF file
+   - The file will upload automatically when selected
+   - Maximum file size: 100MB
+   - Files are retained for 30 days
+
+2. **Available Operations**:
+   After uploading, you'll see four operation buttons:
+
+   **Extract Table of Contents**:
+   - Click to view the PDF's bookmarks/TOC
+   - Displays hierarchically with indentation
+   - Shows page numbers for each entry
+
+   **Extract Pages**:
+   - Enter start and end page numbers
+   - Creates a new PDF with selected pages
+   - Download the extracted PDF file
+
+   **Convert to Images**:
+   - Select page range to convert
+   - Choose DPI (72-300, default: 150)
+   - Select format (PNG or JPG)
+   - View and download generated images
+
+   **Extract Text**:
+   - Select page range for text extraction
+   - Choose plain text or Markdown format
+   - Preview the full extracted text
+   - Copy to clipboard with one click
+   - Download as .txt file
+
+### Web Application Features
+
+- **File Deduplication**: If you upload the same PDF twice, the app recognizes it and uses the cached version
+- **Persistent Storage**: Uploaded files and processed results are stored in the `uploads/` directory
+- **Auto-cleanup**: Files older than 30 days are automatically removed
+- **Real-time Feedback**: Loading indicators show processing status
+- **Error Handling**: Clear error messages for invalid operations
+
+### Example Workflow
+
+1. Upload a PDF manual
+2. Extract the table of contents to see document structure
+3. Extract specific chapters as separate PDFs
+4. Convert diagrams to PNG images for documentation
+5. Extract text content for analysis or copying
+
+## MCP Server Usage
 
 ### Available Tools
 
@@ -283,6 +374,9 @@ pdf-mcp-server/
 │       ├── __init__.py         # Package entry point
 │       ├── server.py           # FastMCP server and tool registration
 │       └── tools.py            # Core PDF processing logic
+├── app.py                      # FastHTML web application
+├── uploads/                    # Directory for uploaded files (auto-created)
+├── pdf_files.db               # SQLite database for file tracking
 ├── pyproject.toml              # Project configuration
 ├── CLAUDE.md                   # Development guidance
 └── README.md                   # This file
@@ -290,10 +384,18 @@ pdf-mcp-server/
 
 ### Adding New Features
 
+#### For MCP Server:
 1. **Implement the core logic** in `PdfTools` class (`src/pdf_mcp_server/tools.py`)
 2. **Register the tool** in `server.py` using the `@mcp.tool` decorator
 3. **Add documentation** to this README and `CLAUDE.md`
 4. **Test the integration** with Claude Desktop
+
+#### For Web Application:
+1. **Add the operation button** in the upload result section of `app.py`
+2. **Create a form route** for parameter input (if needed)
+3. **Implement the processing route** that calls the PDF tools
+4. **Add result display logic** with appropriate UI components
+5. **Test the feature** through the web interface
 
 ### Development Commands
 
@@ -301,8 +403,11 @@ pdf-mcp-server/
 # Install dependencies
 uv sync
 
-# Run the server
+# Run the MCP server
 uv run pdf-mcp-server
+
+# Run the web application
+uv run python app.py
 
 # Run tests (if available)
 uv run pytest
@@ -310,6 +415,9 @@ uv run pytest
 # Format code (if configured)
 uv run black src/
 uv run isort src/
+
+# Add a new dependency
+uv add package_name
 ```
 
 ## Error Handling
@@ -334,6 +442,31 @@ The server provides comprehensive error handling for common scenarios:
 **Solution**: Check file permissions and temporary directory access
 
 ## Troubleshooting
+
+### Web Application Issues
+
+**Problem**: Port 8000 already in use  
+**Solutions:**
+- Stop any other service using port 8000
+- Or modify the port in `app.py`: `serve(port=8001)`
+
+**Problem**: Upload fails or shows "No file uploaded"  
+**Solutions:**
+- Ensure the file is a valid PDF
+- Check file size is under 100MB
+- Verify the `uploads/` directory has write permissions
+
+**Problem**: Downloaded files show 404 error  
+**Solutions:**
+- Check that the `uploads/` directory exists
+- Verify file permissions in the uploads directory
+- Ensure the web server has read access to generated files
+
+**Problem**: "Copy to Clipboard" fails  
+**Solutions:**
+- Ensure you're using HTTPS or localhost (clipboard API requirement)
+- Check browser console for security errors
+- Try using a modern browser (Chrome, Firefox, Edge)
 
 ### Claude Desktop Issues
 
@@ -406,7 +539,9 @@ This project is provided as-is. See the LICENSE file for details.
 ## Acknowledgments
 
 - [FastMCP](https://github.com/jlowin/fastmcp) - Excellent MCP framework for Python
+- [FastHTML](https://github.com/AnswerDotAI/fasthtml) - Modern Python web framework
 - [PyMuPDF](https://pymupdf.readthedocs.io/) - Powerful PDF processing library
+- [PyMuPDF4LLM](https://github.com/pymupdf/PyMuPDF4LLM) - PDF to Markdown conversion
 - [Model Context Protocol](https://modelcontextprotocol.io/) - Protocol specification
 - [Anthropic Claude](https://claude.ai/) - AI assistant integration
 
