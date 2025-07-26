@@ -617,17 +617,37 @@ async def process_extract_text(file_hash: str, start_page: int, end_page: int,
         # Save text to file for download
         text_filename = f"mcp_{file_info.stored_filename.replace('.pdf', '')}_text_p{start_page}-{end_page}.{'md' if use_markdown else 'txt'}"
         text_path = UPLOAD_DIR / text_filename
+        
+        # Debug logging
+        print(f"Extracting text from pages {start_page} to {end_page} from: {file_path}")
+        print(f"Upload directory: {UPLOAD_DIR.resolve()}")
+        print(f"Generated text filename: {text_filename}")
+        print(f"Saving text file to: {text_path.resolve()}")
+        
         text_path.write_text(text_content, encoding='utf-8')
+        
+        # Verify file was created
+        if text_path.exists():
+            file_size = text_path.stat().st_size
+            print(f"Text file saved successfully: {text_filename} ({file_size} bytes)")
+        else:
+            print(f"ERROR: Failed to create text file: {text_path}")
+            return Div(P("Failed to create text file.", cls="error"))
         
         # Show preview (first 1000 characters)
         preview = text_content[:1000] + "..." if len(text_content) > 1000 else text_content
+        
+        # Debug download link generation
+        download_url = f"/{text_filename}"
+        print(f"Creating download link with href: {download_url}")
+        print(f"Download filename attribute: {text_filename}")
         
         return Div(
             H3("Text Extracted Successfully"),
             P(f"Extracted {'Markdown' if use_markdown else 'plain text'} from pages {start_page} to {end_page}"),
             P(f"Total characters: {len(text_content)}"),
             P(A("Download Full Text", 
-                href=f"/{text_filename}",
+                href=download_url,
                 download=text_filename,
                 cls="button")),
             H4("Preview:"),
