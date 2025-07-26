@@ -618,7 +618,7 @@ async def process_extract_text(file_hash: str, start_page: int, end_page: int,
             text_content = "\n\n".join(text_parts)
         
         # Save text to file for download
-        text_filename = f"mcp_{file_info.stored_filename.replace('.pdf', '')}_text_p{start_page}-{end_page}.{'md' if use_markdown else 'txt'}"
+        text_filename = f"mcp_{file_info.stored_filename.replace('.pdf', '')}_text_p{start_page}-{end_page}.txt"
         text_path = UPLOAD_DIR / text_filename
         
         # Debug logging
@@ -637,24 +637,48 @@ async def process_extract_text(file_hash: str, start_page: int, end_page: int,
             print(f"ERROR: Failed to create text file: {text_path}")
             return Div(P("Failed to create text file.", cls="error"))
         
-        # Show preview (first 1000 characters)
-        preview = text_content[:1000] + "..." if len(text_content) > 1000 else text_content
+        # Show full text in preview
+        preview = text_content
         
         # Debug download link generation
         download_url = f"/{text_filename}"
         print(f"Creating download link with href: {download_url}")
         print(f"Download filename attribute: {text_filename}")
         
+        # Generate unique ID for the preview content
+        preview_id = f"preview-{file_hash}-{start_page}-{end_page}"
+        
         return Div(
             H3("Text Extracted Successfully"),
             P(f"Extracted {'Markdown' if use_markdown else 'plain text'} from pages {start_page} to {end_page}"),
             P(f"Total characters: {len(text_content)}"),
-            P(A("Download Full Text", 
-                href=download_url,
-                download=text_filename,
-                cls="button")),
+            Div(
+                A("Download Full Text", 
+                  href=download_url,
+                  download=text_filename,
+                  cls="button",
+                  style="margin-right: 10px;"),
+                Button("Copy to Clipboard", 
+                       onclick=f"""
+                           const text = document.getElementById('{preview_id}').textContent;
+                           navigator.clipboard.writeText(text).then(() => {{
+                               this.textContent = 'Copied!';
+                               this.style.backgroundColor = '#28a745';
+                               setTimeout(() => {{
+                                   this.textContent = 'Copy to Clipboard';
+                                   this.style.backgroundColor = '#007bff';
+                               }}, 2000);
+                           }}).catch(err => {{
+                               console.error('Failed to copy: ', err);
+                               this.textContent = 'Copy failed';
+                               this.style.backgroundColor = '#dc3545';
+                           }});
+                       """,
+                       cls="button"),
+                style="display: flex; align-items: center; margin: 1rem 0;"
+            ),
             H4("Preview:"),
-            Pre(preview, style="white-space: pre-wrap; word-wrap: break-word; max-height: 400px; overflow-y: auto;"),
+            Pre(preview, id=preview_id, style="white-space: pre-wrap; word-wrap: break-word; max-height: 400px; overflow-y: auto;"),
             cls="result-area"
         )
         
