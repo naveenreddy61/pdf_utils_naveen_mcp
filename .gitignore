@@ -15,3 +15,12 @@ uploads/
 *.db
 *.db-*
 pdf_files.db
+
+# Images
+*.png
+*.jpg
+*.jpeg
+
+# Markdown files (except README.md in root)
+*.md
+!README.md
