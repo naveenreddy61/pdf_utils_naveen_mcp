@@ -74,6 +74,9 @@ app, rt = fast_app(
     )
 )
 
+# Enable static file serving for all default extensions including .md and .txt
+app.static_route_exts()
+
 # Define database model
 @dataclass
 class FileRecord:
