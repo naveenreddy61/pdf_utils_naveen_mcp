@@ -64,7 +64,12 @@ app, rt = fast_app(
             .warning { color: #856404; padding: 1rem; background: #fff3cd; border-radius: 4px; margin: 1rem 0; }
             table { width: 100%; border-collapse: collapse; }
             th, td { text-align: left; padding: 8px; border-bottom: 1px solid #ddd; }
-            th { background-color: #f2f2f2; }
+            th { background-color: #f2f2f2; font-weight: bold; }
+            tbody tr:hover { background-color: #f5f5f5; }
+            .toc-level-0 { font-weight: bold; }
+            .toc-level-1 { padding-left: 20px; }
+            .toc-level-2 { padding-left: 40px; }
+            .toc-level-3 { padding-left: 60px; }
             .image-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 1rem; }
             .image-thumb { max-width: 100%; height: auto; border: 1px solid #ddd; }
             .loading { opacity: 0.6; pointer-events: none; }
@@ -339,25 +344,35 @@ def process_toc(file_hash: str):
                 cls="result-area"
             )
         
-        # Build TOC display
-        toc_items = []
+        # Build TOC display as a list for better structure
+        toc_html = []
+        toc_html.append(H3("Table of Contents"))
+        
+        # Create a structured list
+        toc_list_items = []
         for level, title, page in toc:
-            indent = "&nbsp;" * (level * 4)
-            toc_items.append(
-                Tr(
-                    Td(NotStr(indent + title)),
-                    Td(str(page))
+            # Apply different styles based on level
+            style = f"list-style: none; padding: 5px 0; padding-left: {level * 30}px; border-bottom: 1px solid #eee;"
+            if level == 0:
+                style += " font-weight: bold; font-size: 1.1em;"
+            
+            toc_list_items.append(
+                Li(
+                    Span(title, style="flex-grow: 1;"),
+                    Span(f"Page {page}", style="color: #666; margin-left: 10px;"),
+                    style=style + " display: flex; justify-content: space-between; align-items: center;"
                 )
             )
         
+        toc_html.append(
+            Ul(
+                *toc_list_items,
+                style="margin: 0; padding: 0;"
+            )
+        )
+        
         return Div(
-            H3("Table of Contents"),
-            Table(
-                Thead(
-                    Tr(Th("Title"), Th("Page"))
-                ),
-                Tbody(*toc_items)
-            ),
+            *toc_html,
             cls="result-area"
         )
         
