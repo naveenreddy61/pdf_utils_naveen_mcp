@@ -674,7 +674,15 @@ async def process_extract_text(file_hash: str, start_page: int, end_page: int,
             H3("Text Extracted Successfully"),
             P(f"Extracted {'Markdown' if use_markdown else 'plain text'} from pages {start_page} to {end_page}"),
             P(f"Total characters: {len(text_content)}"),
-            P(f"Total tokens: {count_tokens(text_content)} (using gpt-4o encoding)"),
+            Div(
+                Button("Show Token Count", 
+                       hx_post=f"/process/show-tokens/{file_hash}/{start_page}/{end_page}{'?markdown=on' if use_markdown else ''}",
+                       hx_target="#token-count-{file_hash}-{start_page}-{end_page}",
+                       cls="button",
+                       style="font-size: 14px; padding: 8px 16px;"),
+                id=f"token-count-{file_hash}-{start_page}-{end_page}",
+                style="margin: 10px 0;"
+            ),
             Div(
                 A("Download Full Text", 
                   href=download_url,
@@ -707,6 +715,52 @@ async def process_extract_text(file_hash: str, start_page: int, end_page: int,
         
     except Exception as e:
         return Div(P(f"Error extracting text: {str(e)}", cls="error"))
+
+
+@rt('/process/show-tokens/{file_hash}/{start_page}/{end_page}')
+async def process_show_tokens(file_hash: str, start_page: int, end_page: int, 
+                             markdown: Optional[str] = None):
+    """Calculate and display token count for extracted text."""
+    try:
+        file_info = get_file_info(file_hash)
+        if not file_info:
+            return P("File not found.", cls="error")
+        
+        file_path = UPLOAD_DIR / file_info.stored_filename
+        
+        # Validate page range
+        if start_page < 1 or end_page > file_info.page_count or start_page > end_page:
+            return P("Invalid page range.", cls="error")
+        
+        use_markdown = markdown == "on"
+        
+        # Extract the same text as in the original extraction
+        if use_markdown:
+            # Use pymupdf4llm for Markdown extraction
+            pages_list = list(range(start_page - 1, end_page))
+            text_content = pymupdf4llm.to_markdown(file_path, pages=pages_list)
+        else:
+            # Use regular PyMuPDF for plain text extraction
+            doc = pymupdf.open(file_path)
+            text_parts = []
+            
+            for page_num in range(start_page - 1, end_page):
+                page = doc[page_num]
+                text = page.get_text()
+                text_parts.append(f"--- Page {page_num + 1} ---\n{text}")
+            
+            doc.close()
+            text_content = "\n\n".join(text_parts)
+        
+        # Calculate token count
+        token_count = count_tokens(text_content)
+        
+        # Return the token count as a styled paragraph
+        return P(f"Total tokens: {token_count} (using gpt-4o encoding)", 
+                style="margin: 10px 0; color: #155724; font-weight: bold;")
+        
+    except Exception as e:
+        return P(f"Error calculating tokens: {str(e)}", cls="error")
 
 
 
