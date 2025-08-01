@@ -677,7 +677,7 @@ async def process_extract_text(file_hash: str, start_page: int, end_page: int,
             Div(
                 Button("Show Token Count", 
                        hx_post=f"/process/show-tokens/{file_hash}/{start_page}/{end_page}{'?markdown=on' if use_markdown else ''}",
-                       hx_target="#token-count-{file_hash}-{start_page}-{end_page}",
+                       hx_target=f"#token-count-{file_hash}-{start_page}-{end_page}",
                        cls="button",
                        style="font-size: 14px; padding: 8px 16px;"),
                 id=f"token-count-{file_hash}-{start_page}-{end_page}",
