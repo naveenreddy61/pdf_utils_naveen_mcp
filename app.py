@@ -13,6 +13,7 @@ from fasthtml.common import *
 from fastlite import *
 import pymupdf
 import pymupdf4llm
+import tiktoken
 from dataclasses import dataclass
 from starlette.requests import Request
 from apswutils.db import NotFoundError
@@ -119,6 +120,12 @@ def sanitize_filename(filename: str) -> str:
     ext = Path(filename).suffix
     safe_name = re.sub(r'[^\w\-_]', '_', name)
     return f"{safe_name}{ext}"
+
+
+def count_tokens(text: str) -> int:
+    """Count tokens in text using GPT-4o encoding."""
+    encoding = tiktoken.encoding_for_model("gpt-4o")
+    return len(encoding.encode(text))
 
 
 async def cleanup_old_files():
@@ -667,6 +674,7 @@ async def process_extract_text(file_hash: str, start_page: int, end_page: int,
             H3("Text Extracted Successfully"),
             P(f"Extracted {'Markdown' if use_markdown else 'plain text'} from pages {start_page} to {end_page}"),
             P(f"Total characters: {len(text_content)}"),
+            P(f"Total tokens: {count_tokens(text_content)} (using gpt-4o encoding)"),
             Div(
                 A("Download Full Text", 
                   href=download_url,
