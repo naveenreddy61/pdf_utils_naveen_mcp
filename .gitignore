@@ -24,3 +24,4 @@ pdf_files.db
 # Markdown files (except README.md in root)
 *.md
 !README.md
+.sesskey
