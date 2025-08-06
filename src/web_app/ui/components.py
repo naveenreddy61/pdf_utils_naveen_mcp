@@ -202,11 +202,17 @@ def image_extraction_gallery(images_data, file_hash, start_page, end_page):
         Div(
             Button(
                 "Download All as ZIP",
-                hx_get=f"/download-image-zip/{file_hash}/{start_page}/{end_page}",
-                hx_swap="none",
+                onclick=f"""
+                    this.textContent='Preparing ZIP...'; 
+                    this.disabled=true;
+                    window.location.href='/download-image-zip/{file_hash}/{start_page}/{end_page}';
+                    setTimeout(() => {{
+                        this.textContent='Download All as ZIP';
+                        this.disabled=false;
+                    }}, 2000);
+                """,
                 cls="button",
-                style="background-color: #007bff; margin: 15px 0;",
-                onclick="this.textContent='Preparing ZIP...'; this.disabled=true;"
+                style="background-color: #007bff; margin: 15px 0;"
             ),
             style="margin: 20px 0;"
         ),
