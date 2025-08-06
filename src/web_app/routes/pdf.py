@@ -2,12 +2,15 @@
 
 from typing import Optional
 from pathlib import Path
+import zipfile
+import io
 from fasthtml.common import *
+from starlette.responses import StreamingResponse
 from config import UPLOAD_DIR, MIN_DPI, MAX_DPI, DEFAULT_DPI
 from src.web_app.core.database import get_file_info
 from src.web_app.core.utils import count_tokens
 from src.web_app.services import pdf_service
-from src.web_app.ui.components import error_message, toc_display
+from src.web_app.ui.components import error_message, toc_display, image_extraction_gallery
 
 
 def setup_routes(app, rt):
@@ -352,3 +355,123 @@ def setup_routes(app, rt):
             
         except Exception as e:
             return P(f"Error calculating tokens: {str(e)}", cls="error")
+    
+    
+    @rt('/extract-images-form/{file_hash}')
+    def extract_images_form(file_hash: str):
+        """Show form for image extraction."""
+        file_info = get_file_info(file_hash)
+        if not file_info:
+            return Div(error_message("File not found."))
+        
+        return Div(
+            H3("Extract Images"),
+            P(f"Total pages: {file_info.page_count}"),
+            P("Images smaller than 25x25 pixels will be filtered out.", style="color: #666; font-size: 0.9em;"),
+            P("Maximum 12 images per page (largest by area).", style="color: #666; font-size: 0.9em;"),
+            Form(
+                Label("Start Page:", Input(type="number", name="start_page", 
+                                          min="1", max=str(file_info.page_count), 
+                                          value="1", required=True)),
+                Label("End Page:", Input(type="number", name="end_page", 
+                                        min="1", max=str(file_info.page_count), 
+                                        value=str(min(10, file_info.page_count)), required=True)),
+                Button("Extract Images", type="submit"),
+                hx_post=f"/process/extract-images/{file_hash}",
+                hx_target="#operation-result",
+                hx_indicator="#extract-spinner"
+            ),
+            Div(id="extract-spinner", cls="spinner", style="display: none;"),
+            cls="result-area"
+        )
+    
+    
+    @rt('/process/extract-images/{file_hash}')
+    async def process_extract_images(file_hash: str, start_page: int, end_page: int):
+        """Extract images from specified pages."""
+        try:
+            file_info = get_file_info(file_hash)
+            if not file_info:
+                return Div(error_message("File not found."))
+            
+            file_path = UPLOAD_DIR / file_info.stored_filename
+            
+            # Validate page range
+            if start_page < 1 or end_page > file_info.page_count or start_page > end_page:
+                return Div(error_message("Invalid page range."))
+            
+            # Extract images
+            print(f"Extracting images from pages {start_page} to {end_page} from: {file_path}")
+            images_data = pdf_service.extract_images_from_pages(file_path, start_page, end_page)
+            
+            # Store images data in app context for ZIP download
+            # Note: In production, consider using a cache with TTL
+            if not hasattr(app, 'extracted_images_cache'):
+                app.extracted_images_cache = {}
+            
+            cache_key = f"{file_hash}_{start_page}_{end_page}"
+            app.extracted_images_cache[cache_key] = images_data
+            
+            # Return gallery view
+            return image_extraction_gallery(images_data, file_hash, start_page, end_page)
+            
+        except Exception as e:
+            print(f"Error extracting images: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return Div(error_message(f"Error extracting images: {str(e)}"))
+    
+    
+    @rt('/download-image-zip/{file_hash}/{start_page}/{end_page}')
+    async def download_image_zip(file_hash: str, start_page: int, end_page: int):
+        """Generate and download a ZIP file containing all extracted images."""
+        try:
+            # Check if images are in cache
+            cache_key = f"{file_hash}_{start_page}_{end_page}"
+            
+            # If not in cache, extract them again
+            if not hasattr(app, 'extracted_images_cache') or cache_key not in app.extracted_images_cache:
+                file_info = get_file_info(file_hash)
+                if not file_info:
+                    return Div(error_message("File not found."))
+                
+                file_path = UPLOAD_DIR / file_info.stored_filename
+                images_data = pdf_service.extract_images_from_pages(file_path, start_page, end_page)
+            else:
+                images_data = app.extracted_images_cache[cache_key]
+            
+            if not images_data:
+                return Div(error_message("No images to download."))
+            
+            # Create ZIP file in memory
+            zip_buffer = io.BytesIO()
+            with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+                for page_num, page_images in images_data.items():
+                    for img_data in page_images:
+                        # Use raw_data if available, otherwise decode from base64
+                        if 'raw_data' in img_data:
+                            image_bytes = img_data['raw_data']
+                        else:
+                            # Extract base64 data and decode
+                            base64_str = img_data['data'].split(',')[1]
+                            import base64
+                            image_bytes = base64.b64decode(base64_str)
+                        
+                        zip_file.writestr(img_data['filename'], image_bytes)
+            
+            zip_buffer.seek(0)
+            
+            # Return as streaming response
+            return StreamingResponse(
+                zip_buffer,
+                media_type='application/zip',
+                headers={
+                    'Content-Disposition': f'attachment; filename="extracted_images_p{start_page}-{end_page}.zip"'
+                }
+            )
+            
+        except Exception as e:
+            print(f"Error creating ZIP: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return Div(error_message(f"Error creating ZIP file: {str(e)}"))

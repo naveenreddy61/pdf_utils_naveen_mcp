@@ -47,6 +47,7 @@ def operation_buttons(file_hash):
     """Display operation buttons."""
     return Div(
         H3("Available Operations"),
+        # First row of buttons
         Div(
             Button("Extract Table of Contents", 
                    hx_post=f"/process/toc/{file_hash}",
@@ -69,6 +70,17 @@ def operation_buttons(file_hash):
                    cls="button"),
             
             cls="operation-buttons"
+        ),
+        # Second row with Extract Images button
+        Div(
+            Button("Extract Images", 
+                   hx_get=f"/extract-images-form/{file_hash}",
+                   hx_target="#operation-result",
+                   cls="button",
+                   style="background-color: #28a745;"),
+            
+            cls="operation-buttons",
+            style="margin-top: 10px;"
         )
     )
 
@@ -121,3 +133,89 @@ def success_message(message):
 def warning_message(message):
     """Display a warning message."""
     return P(message, cls="warning")
+
+
+def image_extraction_gallery(images_data, file_hash, start_page, end_page):
+    """Display extracted images in a gallery grid."""
+    if not images_data:
+        return Div(
+            H3("No Images Found"),
+            P("No images were found in the specified page range.", cls="warning"),
+            cls="result-area"
+        )
+    
+    # Create gallery elements
+    gallery_elements = []
+    total_images = 0
+    
+    for page_num in sorted(images_data.keys()):
+        page_images = images_data[page_num]
+        if not page_images:
+            continue
+            
+        # Add page separator
+        gallery_elements.append(
+            Div(
+                H4(f"Page {page_num}", style="margin: 20px 0 10px 0; clear: both;"),
+                cls="page-separator"
+            )
+        )
+        
+        # Create image grid for this page
+        image_items = []
+        for img_data in page_images:
+            total_images += 1
+            # Create downloadable image element
+            image_items.append(
+                Div(
+                    A(
+                        Img(
+                            src=img_data['data'],
+                            alt=img_data['filename'],
+                            cls="image-thumbnail",
+                            style="width: 300px; height: 300px; object-fit: contain; border: 1px solid #ddd; cursor: pointer;"
+                        ),
+                        href=img_data['data'],
+                        download=img_data['filename'],
+                        title=f"Click to download {img_data['filename']}"
+                    ),
+                    cls="image-item"
+                )
+            )
+        
+        # Add image grid for this page
+        gallery_elements.append(
+            Div(
+                *image_items,
+                cls="image-extraction-grid",
+                style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 20px;"
+            )
+        )
+    
+    # Create the complete gallery
+    return Div(
+        H3("Extracted Images"),
+        P(f"Found {total_images} images from pages {start_page} to {end_page}"),
+        P("Click on any image to download it", style="color: #666; font-style: italic;"),
+        
+        # Download all button
+        Div(
+            Button(
+                "Download All as ZIP",
+                hx_get=f"/download-image-zip/{file_hash}/{start_page}/{end_page}",
+                hx_swap="none",
+                cls="button",
+                style="background-color: #007bff; margin: 15px 0;",
+                onclick="this.textContent='Preparing ZIP...'; this.disabled=true;"
+            ),
+            style="margin: 20px 0;"
+        ),
+        
+        # Image gallery
+        Div(
+            *gallery_elements,
+            cls="image-gallery-container"
+        ),
+        
+        cls="result-area"
+    )

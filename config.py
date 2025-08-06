@@ -24,3 +24,9 @@ MIN_DPI = 72
 
 # Token counting model
 TOKEN_COUNTING_MODEL = "gpt-4o"
+
+# Image extraction settings
+IMAGE_COMPRESSION_QUALITY = 85  # JPEG compression quality (1-100)
+MIN_IMAGE_SIZE = 25  # Minimum width/height in pixels
+MAX_IMAGES_PER_PAGE = 12  # Maximum images to extract per page
+IMAGE_PREVIEW_SIZE = 300  # Thumbnail display size in pixels

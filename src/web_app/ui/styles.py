@@ -41,4 +41,58 @@ tbody tr:hover { background-color: #f5f5f5; }
 .loading { opacity: 0.6; pointer-events: none; }
 .spinner { display: inline-block; width: 20px; height: 20px; border: 3px solid rgba(0,0,0,.1); border-radius: 50%; border-top-color: #007bff; animation: spin 1s ease-in-out infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
+.image-extraction-grid { 
+    display: grid; 
+    grid-template-columns: repeat(4, 1fr); 
+    gap: 15px; 
+    margin-bottom: 20px;
+}
+@media (max-width: 1200px) {
+    .image-extraction-grid { grid-template-columns: repeat(3, 1fr); }
+}
+@media (max-width: 900px) {
+    .image-extraction-grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 600px) {
+    .image-extraction-grid { grid-template-columns: 1fr; }
+}
+.image-thumbnail {
+    width: 100%;
+    height: 300px;
+    object-fit: contain;
+    border: 1px solid #ddd;
+    background: #f9f9f9;
+    cursor: pointer;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+.image-thumbnail:hover {
+    transform: scale(1.02);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+}
+.image-item {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: white;
+    border-radius: 4px;
+    overflow: hidden;
+}
+.page-separator {
+    grid-column: 1 / -1;
+    margin: 20px 0 10px 0;
+    padding-top: 20px;
+    border-top: 2px solid #e0e0e0;
+}
+.page-separator:first-child {
+    border-top: none;
+    padding-top: 0;
+}
+.image-gallery-container {
+    max-height: 800px;
+    overflow-y: auto;
+    padding: 10px;
+    border: 1px solid #e0e0e0;
+    border-radius: 4px;
+    background: #fafafa;
+}
 """
