@@ -10,6 +10,9 @@ wheels/
 .venv
 CLAUDE.md
 
+# Environment variables
+.env
+
 # Application data
 uploads/
 *.db
@@ -25,3 +28,6 @@ pdf_files.db
 *.md
 !README.md
 .sesskey
+
+# experiment files
+experiments/
