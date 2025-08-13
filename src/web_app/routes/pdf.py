@@ -10,7 +10,8 @@ from config import UPLOAD_DIR, MIN_DPI, MAX_DPI, DEFAULT_DPI
 from src.web_app.core.database import get_file_info
 from src.web_app.core.utils import count_tokens
 from src.web_app.services import pdf_service
-from src.web_app.ui.components import error_message, toc_display, image_extraction_gallery
+from src.web_app.ui.components import error_message, toc_display, image_extraction_gallery, ocr_result_display
+from src.web_app.services import ocr_service
 
 
 def setup_routes(app, rt):
@@ -475,3 +476,73 @@ def setup_routes(app, rt):
             import traceback
             traceback.print_exc()
             return Div(error_message(f"Error creating ZIP file: {str(e)}"))
+    
+    
+    @rt('/extract-text-llm-form/{file_hash}')
+    def extract_text_llm_form(file_hash: str):
+        """Show form for LLM-based text extraction with OCR."""
+        file_info = get_file_info(file_hash)
+        if not file_info:
+            return Div(error_message("File not found."))
+        
+        return Div(
+            H3("Extract Text with LLM OCR"),
+            P(f"Total pages: {file_info.page_count}"),
+            P("This feature uses AI to extract text, with special handling for mathematical content.", 
+              style="color: #666; font-size: 0.9em;"),
+            P("Pages with math will be processed using LLM OCR with LaTeX formatting.", 
+              style="color: #666; font-size: 0.9em;"),
+            Form(
+                Label("Start Page:", Input(type="number", name="start_page", 
+                                          min="1", max=str(file_info.page_count), 
+                                          value="1", required=True)),
+                Label("End Page:", Input(type="number", name="end_page", 
+                                        min="1", max=str(file_info.page_count), 
+                                        value=str(min(5, file_info.page_count)), required=True)),
+                Button("Extract with OCR", type="submit"),
+                hx_post=f"/process/extract-text-llm/{file_hash}",
+                hx_target="#operation-result",
+                hx_indicator="#ocr-spinner"
+            ),
+            Div(id="ocr-spinner", cls="spinner", style="display: none;"),
+            cls="result-area"
+        )
+    
+    
+    @rt('/process/extract-text-llm/{file_hash}')
+    async def process_extract_text_llm(file_hash: str, start_page: int, end_page: int):
+        """Extract text using LLM OCR for math pages."""
+        try:
+            file_info = get_file_info(file_hash)
+            if not file_info:
+                return Div(error_message("File not found."))
+            
+            file_path = UPLOAD_DIR / file_info.stored_filename
+            
+            # Validate page range
+            if start_page < 1 or end_page > file_info.page_count or start_page > end_page:
+                return Div(error_message("Invalid page range."))
+            
+            # Process pages with smart OCR
+            print(f"Starting LLM OCR extraction for pages {start_page} to {end_page} from: {file_path}")
+            results = ocr_service.process_pages_with_smart_ocr(file_path, start_page, end_page)
+            
+            # Save text to file for download
+            text_filename = f"mcp_{file_info.stored_filename.replace('.pdf', '')}_llm_ocr_p{start_page}-{end_page}.txt"
+            text_path = UPLOAD_DIR / text_filename
+            text_path.write_text(results["full_text"], encoding='utf-8')
+            
+            # Return the formatted result display
+            return ocr_result_display(
+                results=results,
+                file_hash=file_hash,
+                start_page=start_page,
+                end_page=end_page,
+                text_filename=text_filename
+            )
+            
+        except Exception as e:
+            print(f"Error in LLM OCR extraction: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return Div(error_message(f"Error extracting text with LLM: {str(e)}"))

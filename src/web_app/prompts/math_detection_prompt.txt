@@ -1,0 +1,43 @@
+Analyze this document image and determine if it contains formal mathematical expressions or equations that would appear in a pure mathematics textbook.
+
+Look for FORMAL MATHEMATICAL CONTENT such as:
+- Set theory notation (e.g., Ω = {ω : ω ∈ A}, A ∩ B = {x : x ∈ A and x ∈ B})
+- Mathematical equations with variables and operators (e.g., f(x) = ax² + bx + c)
+- Statistical formulas and probability expressions (e.g., P(A|B) = P(A∩B)/P(B))
+- Calculus expressions (integrals, derivatives, limits)
+- Mathematical proofs with formal symbolic notation
+- Geometric theorems with mathematical symbols
+- Matrix operations and linear algebra expressions
+- Mathematical definitions using symbolic notation
+
+IMPORTANT: Only classify as mathematical if you see COMPLETE MATHEMATICAL EXPRESSIONS with operators (=, +, -, *, /, ∫, ∑, etc.) that form evaluatable mathematical statements.
+
+Do NOT classify as significant mathematical content:
+- Programming code or software syntax (Python, JavaScript, etc.)
+- Technical specifications with numbers (e.g., "4x10G", "16x10 Gbps", "32064 dimensions")
+- System configurations and network settings
+- Charts, graphs, or data visualizations (even with mathematical data)
+- Mathematical concepts mentioned in regular text without formal notation
+- Code parameters, tensor shapes, or software configurations
+- Performance metrics, ratios, or technical measurements
+- Greek letters or variables mentioned in prose without complete equations
+- Statistical terminology discussed in text without formal mathematical expressions
+- Programming function calls with numerical arguments
+- Data structures or arrays with numbers
+- Isolated mathematical symbols (φ₁, ρ₁, θ) used as variable names or identifiers
+- Algorithmic notation (Big O notation, O(n), O(log n)) in computer science contexts
+- Technical representations (binary codes, hexadecimal values, memory addresses)
+
+Key Decision Criteria:
+- Would this mathematical content appear in a pure mathematics textbook?
+- Is this formal mathematical notation or just applied/contextual mathematics?
+- Are complete mathematical expressions with operators visually displayed, not just referenced?
+- Can the mathematical content be evaluated or manipulated as a mathematical statement?
+
+Respond with:
+- YES only if formal mathematical expressions/equations with operators are visually displayed
+- NO if content is applied mathematics, code, specifications, graphs, or isolated symbols
+
+Format your response as:
+Classification: [YES/NO]
+Explanation: [Brief explanation in 1 sentence]

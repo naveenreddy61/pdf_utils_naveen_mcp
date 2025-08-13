@@ -79,6 +79,12 @@ def operation_buttons(file_hash):
                    cls="button",
                    style="background-color: #28a745;"),
             
+            Button("Extract Text LLM OCR", 
+                   hx_get=f"/extract-text-llm-form/{file_hash}",
+                   hx_target="#operation-result",
+                   cls="button",
+                   style="background-color: #6610f2;"),
+            
             cls="operation-buttons",
             style="margin-top: 10px;"
         )
@@ -222,6 +228,91 @@ def image_extraction_gallery(images_data, file_hash, start_page, end_page):
             *gallery_elements,
             cls="image-gallery-container"
         ),
+        
+        cls="result-area"
+    )
+
+
+def ocr_result_display(results, file_hash, start_page, end_page, text_filename):
+    """Display OCR extraction results with token usage and processing details."""
+    # Generate unique ID for the preview content
+    preview_id = f"ocr-preview-{file_hash}-{start_page}-{end_page}"
+    
+    # Create processing details display
+    page_details = []
+    for detail in results["processing_details"]:
+        method_color = "#28a745" if detail["method"].startswith("LLM") else "#6c757d"
+        page_details.append(
+            Li(
+                f"Page {detail['page']}: {detail['method']}",
+                style=f"color: {method_color}; padding: 2px 0;"
+            )
+        )
+    
+    return Div(
+        H3("Text Extracted with LLM OCR"),
+        
+        # Summary section
+        Div(
+            P(results["summary"], style="font-weight: bold; color: #155724;"),
+            cls="alert",
+            style="background-color: #d4edda; border: 1px solid #c3e6cb; padding: 10px; border-radius: 4px; margin-bottom: 15px;"
+        ),
+        
+        # Token usage section
+        Div(
+            H4("Token Usage", style="margin-bottom: 10px;"),
+            P(f"Input tokens: {results['total_input_tokens']:,}", style="margin: 5px 0;"),
+            P(f"Output tokens: {results['total_output_tokens']:,}", style="margin: 5px 0;"),
+            P(f"Total tokens: {results['total_input_tokens'] + results['total_output_tokens']:,}", 
+              style="margin: 5px 0; font-weight: bold;"),
+            cls="token-usage",
+            style="background-color: #f8f9fa; padding: 15px; border-radius: 4px; margin-bottom: 15px;"
+        ),
+        
+        # Processing details
+        Div(
+            H4("Processing Details", style="margin-bottom: 10px;"),
+            Ul(*page_details, style="list-style-type: none; padding-left: 0;"),
+            cls="processing-details",
+            style="background-color: #f8f9fa; padding: 15px; border-radius: 4px; margin-bottom: 15px;"
+        ),
+        
+        # Text info
+        P(f"Total characters: {len(results['full_text'])}"),
+        
+        # Action buttons
+        Div(
+            A("Download Full Text", 
+              href=f"/{text_filename}",
+              download=text_filename,
+              cls="button",
+              style="margin-right: 10px;"),
+            Button("Copy to Clipboard", 
+                   onclick=f"""
+                       const text = document.getElementById('{preview_id}').textContent;
+                       navigator.clipboard.writeText(text).then(() => {{
+                           this.textContent = 'Copied!';
+                           this.style.backgroundColor = '#28a745';
+                           setTimeout(() => {{
+                               this.textContent = 'Copy to Clipboard';
+                               this.style.backgroundColor = '#007bff';
+                           }}, 2000);
+                       }}).catch(err => {{
+                           console.error('Failed to copy: ', err);
+                           this.textContent = 'Copy failed';
+                           this.style.backgroundColor = '#dc3545';
+                       }});
+                   """,
+                   cls="button"),
+            style="display: flex; align-items: center; margin: 1rem 0;"
+        ),
+        
+        # Text preview
+        H4("Preview:"),
+        Pre(results["full_text"], 
+            id=preview_id, 
+            style="white-space: pre-wrap; word-wrap: break-word; max-height: 400px; overflow-y: auto; background-color: #f8f9fa; padding: 15px; border-radius: 4px;"),
         
         cls="result-area"
     )

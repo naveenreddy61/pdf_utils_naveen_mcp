@@ -30,3 +30,11 @@ IMAGE_COMPRESSION_QUALITY = 85  # JPEG compression quality (1-100)
 MIN_IMAGE_SIZE = 25  # Minimum width/height in pixels
 MAX_IMAGES_PER_PAGE = 12  # Maximum images to extract per page
 IMAGE_PREVIEW_SIZE = 300  # Thumbnail display size in pixels
+
+# OCR with LLM settings
+OCR_MODEL = "gemini/gemini-2.5-flash-lite"
+OCR_TEMPERATURE = 0.1
+OCR_TIMEOUT = 60
+OCR_DPI = 200  # DPI for page image conversion
+OCR_MAX_TOKENS = 4096
+MATH_DETECTION_MODEL = "gemini/gemini-2.5-flash-lite"
