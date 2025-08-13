@@ -237,7 +237,9 @@ def process_pages_with_smart_ocr(
         if has_math:
             # Use LLM OCR for math pages
             print(f"Page {page_num}: Detected math content, using LLM OCR")
+            print(f"  - Detection tokens: {detect_input_tokens} in, {detect_output_tokens} out")
             extracted_text, ocr_input_tokens, ocr_output_tokens = ocr_page_with_llm(page_image_base64)
+            print(f"  - OCR tokens: {ocr_input_tokens} in, {ocr_output_tokens} out")
             results["total_input_tokens"] += ocr_input_tokens
             results["total_output_tokens"] += ocr_output_tokens
             results["pages_with_llm"].append(page_num)
@@ -256,6 +258,7 @@ def process_pages_with_smart_ocr(
         else:
             # Use pymupdf4llm for non-math pages
             print(f"Page {page_num}: No math content, using offline extraction")
+            print(f"  - Detection tokens: {detect_input_tokens} in, {detect_output_tokens} out")
             try:
                 # Extract just this page using pymupdf4llm
                 page_text = pymupdf4llm.to_markdown(pdf_path, pages=[page_num - 1])

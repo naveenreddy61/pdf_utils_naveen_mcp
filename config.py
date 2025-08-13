@@ -35,6 +35,6 @@ IMAGE_PREVIEW_SIZE = 300  # Thumbnail display size in pixels
 OCR_MODEL = "gemini/gemini-2.5-flash-lite"
 OCR_TEMPERATURE = 0.1
 OCR_TIMEOUT = 60
-OCR_DPI = 200  # DPI for page image conversion
+OCR_DPI = 150  # DPI for page image conversion
 OCR_MAX_TOKENS = 4096
 MATH_DETECTION_MODEL = "gemini/gemini-2.5-flash-lite"
