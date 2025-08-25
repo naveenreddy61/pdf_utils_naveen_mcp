@@ -511,7 +511,7 @@ def setup_routes(app, rt):
     
     @rt('/process/extract-text-llm/{file_hash}')
     async def process_extract_text_llm(file_hash: str, start_page: int, end_page: int):
-        """Extract text using LLM OCR for math pages."""
+        """Extract text using async LLM OCR with caching and batch processing."""
         try:
             file_info = get_file_info(file_hash)
             if not file_info:
@@ -523,12 +523,28 @@ def setup_routes(app, rt):
             if start_page < 1 or end_page > file_info.page_count or start_page > end_page:
                 return Div(error_message("Invalid page range."))
             
-            # Process pages with smart OCR
-            print(f"Starting LLM OCR extraction for pages {start_page} to {end_page} from: {file_path}")
-            results = ocr_service.process_pages_with_smart_ocr(file_path, start_page, end_page)
+            # Store progress messages
+            progress_messages = []
+            
+            def progress_callback(message: str):
+                progress_messages.append(message)
+                print(f"OCR Progress: {message}")
+            
+            # Process pages with async OCR
+            print(f"Starting async LLM OCR extraction for pages {start_page} to {end_page} from: {file_path}")
+            results = await ocr_service.process_pages_async_batch(
+                file_path, 
+                start_page, 
+                end_page,
+                progress_callback=progress_callback
+            )
+            
+            # Add progress messages to results for display
+            results["progress_messages"] = progress_messages
             
             # Save text to file for download
-            text_filename = f"mcp_{file_info.stored_filename.replace('.pdf', '')}_llm_ocr_p{start_page}-{end_page}.txt"
+            cache_info = f"_cache{results['cache_hit_rate']:.0f}pct" if results.get('cache_hit_rate', 0) > 0 else ""
+            text_filename = f"mcp_{file_info.stored_filename.replace('.pdf', '')}_async_ocr_p{start_page}-{end_page}{cache_info}.txt"
             text_path = UPLOAD_DIR / text_filename
             text_path.write_text(results["full_text"], encoding='utf-8')
             
@@ -542,7 +558,7 @@ def setup_routes(app, rt):
             )
             
         except Exception as e:
-            print(f"Error in LLM OCR extraction: {str(e)}")
+            print(f"Error in async LLM OCR extraction: {str(e)}")
             import traceback
             traceback.print_exc()
             return Div(error_message(f"Error extracting text with LLM: {str(e)}"))

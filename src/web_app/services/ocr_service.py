@@ -1,26 +1,39 @@
-"""OCR service for extracting text from PDF pages using LLM."""
+"""OCR service for extracting text from PDF pages using async LLM processing with caching."""
 
 import os
 import base64
 import io
+import asyncio
+import time
 from pathlib import Path
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple, Optional, Callable
 import pymupdf
 import pymupdf4llm
 import litellm
 from PIL import Image
 from dotenv import load_dotenv
-from config import OCR_MODEL, OCR_TEMPERATURE, OCR_TIMEOUT, OCR_DPI, OCR_MAX_TOKENS, MATH_DETECTION_MODEL
+
+from config import (
+    OCR_MODEL, 
+    OCR_TEMPERATURE, 
+    OCR_TIMEOUT, 
+    OCR_DPI, 
+    OCR_MAX_TOKENS,
+    OCR_CONCURRENT_REQUESTS,
+    OCR_MAX_RETRIES,
+    OCR_RETRY_DELAY_BASE,
+    OCR_BATCH_TIMEOUT
+)
+from .ocr_cache import (
+    compute_image_hash,
+    get_cached_ocr,
+    save_ocr_to_cache,
+    clean_old_cache_entries,
+    init_cache_database
+)
 
 # Load environment variables
 load_dotenv()
-
-
-def load_classification_prompt() -> str:
-    """Load the math classification prompt from prompts folder."""
-    prompt_path = Path(__file__).parent.parent / "prompts" / "math_detection_prompt.txt"
-    with open(prompt_path, 'r', encoding='utf-8') as f:
-        return f.read().strip()
 
 
 def load_ocr_prompt() -> str:
@@ -79,76 +92,58 @@ def convert_page_to_base64(pdf_path: Path, page_num: int, dpi: int = OCR_DPI) ->
     return base64_data
 
 
-def detect_math_content(page_image_base64: str) -> Tuple[bool, int, int]:
+def extract_with_pymupdf_fallback(pdf_path: Path, page_num: int) -> str:
     """
-    Detect if a page contains mathematical content.
+    Extract text from a page using PyMuPDF as fallback.
     
     Args:
-        page_image_base64: Base64 encoded image of the page
+        pdf_path: Path to PDF file
+        page_num: Page number (1-based)
         
     Returns:
-        Tuple of (has_math, input_tokens, output_tokens)
+        Extracted text
     """
     try:
-        # Load classification prompt
-        prompt = load_classification_prompt()
-        
-        # Prepare message for LiteLLM
-        messages = [
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "text",
-                        "text": prompt
-                    },
-                    {
-                        "type": "image_url",
-                        "image_url": {
-                            "url": f"data:image/jpeg;base64,{page_image_base64}"
-                        }
-                    }
-                ]
-            }
-        ]
-        
-        # Make API call
-        response = litellm.completion(
-            model=MATH_DETECTION_MODEL,
-            messages=messages,
-            temperature=OCR_TEMPERATURE,
-            timeout=OCR_TIMEOUT
-        )
-        
-        # Extract response
-        response_text = response.choices[0].message.content
-        
-        # Parse classification
-        has_math = "Classification: YES" in response_text or "YES" in response_text.upper()[:20]
-        
-        # Get token usage
-        usage = response.usage
-        input_tokens = usage.prompt_tokens if usage else 0
-        output_tokens = usage.completion_tokens if usage else 0
-        
-        return has_math, input_tokens, output_tokens
-        
-    except Exception as e:
-        print(f"Error in math detection: {str(e)}")
-        # On error, default to using standard extraction
-        return False, 0, 0
+        # Try pymupdf4llm first for better formatting
+        page_text = pymupdf4llm.to_markdown(pdf_path, pages=[page_num - 1])
+        return page_text
+    except Exception:
+        # Fallback to basic extraction
+        try:
+            doc = pymupdf.open(pdf_path)
+            page = doc[page_num - 1]
+            page_text = page.get_text()
+            doc.close()
+            return page_text
+        except Exception as e:
+            return f"[Error extracting text from page {page_num}: {str(e)}]"
 
 
-def ocr_page_with_llm(page_image_base64: str) -> Tuple[str, int, int]:
+async def ocr_page_with_llm(
+    page_image_base64: str, 
+    page_num: int,
+    pdf_filename: Optional[str] = None
+) -> Tuple[str, int, int, str]:
     """
-    Perform OCR on a page using LLM with LaTeX formatting for math.
+    Perform OCR on a page using LLM with caching support.
     
     Args:
         page_image_base64: Base64 encoded image of the page
+        page_num: Page number for debugging
+        pdf_filename: PDF filename for debugging
         
     Returns:
-        Tuple of (extracted_text, input_tokens, output_tokens)
+        Tuple of (extracted_text, input_tokens, output_tokens, method)
+        method is "cached" or "llm"
     """
+    # Check cache first
+    image_hash = compute_image_hash(page_image_base64)
+    cached_result = await get_cached_ocr(image_hash)
+    
+    if cached_result:
+        text, input_tokens, output_tokens = cached_result
+        return text, input_tokens, output_tokens, "cached"
+    
     try:
         # Load OCR prompt
         prompt = load_ocr_prompt()
@@ -172,8 +167,8 @@ def ocr_page_with_llm(page_image_base64: str) -> Tuple[str, int, int]:
             }
         ]
         
-        # Make API call
-        response = litellm.completion(
+        # Make async API call
+        response = await litellm.acompletion(
             model=OCR_MODEL,
             messages=messages,
             temperature=OCR_TEMPERATURE,
@@ -189,115 +184,338 @@ def ocr_page_with_llm(page_image_base64: str) -> Tuple[str, int, int]:
         input_tokens = usage.prompt_tokens if usage else 0
         output_tokens = usage.completion_tokens if usage else 0
         
-        return extracted_text, input_tokens, output_tokens
+        # Save to cache
+        await save_ocr_to_cache(
+            image_hash, 
+            extracted_text, 
+            input_tokens, 
+            output_tokens,
+            pdf_filename,
+            page_num
+        )
+        
+        return extracted_text, input_tokens, output_tokens, "llm"
         
     except Exception as e:
-        print(f"Error in LLM OCR: {str(e)}")
-        return f"[Error extracting text from page: {str(e)}]", 0, 0
+        print(f"Error in LLM OCR for page {page_num}: {str(e)}")
+        raise e
 
 
-def process_pages_with_smart_ocr(
-    pdf_path: Path, 
-    start_page: int, 
-    end_page: int
+async def process_single_page(
+    pdf_path: Path,
+    page_num: int,
+    semaphore: asyncio.Semaphore,
+    pdf_filename: Optional[str] = None
 ) -> Dict:
     """
-    Process pages with smart OCR - using LLM for math pages, pymupdf for others.
+    Process a single page with semaphore rate limiting.
+    
+    Args:
+        pdf_path: Path to PDF file
+        page_num: Page number (1-based)
+        semaphore: Semaphore for rate limiting
+        pdf_filename: PDF filename for caching/debugging
+        
+    Returns:
+        Dictionary with page processing result
+    """
+    async with semaphore:
+        try:
+            # Convert page to base64
+            page_image_base64 = convert_page_to_base64(pdf_path, page_num)
+            
+            # Perform OCR with caching
+            text, input_tokens, output_tokens, method = await ocr_page_with_llm(
+                page_image_base64, page_num, pdf_filename
+            )
+            
+            return {
+                "page": page_num,
+                "text": text,
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+                "method": method,
+                "success": True,
+                "error": None,
+                "retry_count": 0
+            }
+            
+        except Exception as e:
+            return {
+                "page": page_num,
+                "text": None,
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "method": "failed",
+                "success": False,
+                "error": str(e),
+                "retry_count": 0
+            }
+
+
+async def retry_failed_pages(
+    failed_pages: List[Dict],
+    attempt: int,
+    pdf_path: Path,
+    semaphore: asyncio.Semaphore,
+    pdf_filename: Optional[str] = None
+) -> List[Dict]:
+    """
+    Retry processing failed pages with exponential backoff.
+    
+    Args:
+        failed_pages: List of failed page results
+        attempt: Current retry attempt number
+        pdf_path: Path to PDF file
+        semaphore: Semaphore for rate limiting
+        pdf_filename: PDF filename for caching/debugging
+        
+    Returns:
+        List of retry results
+    """
+    # Exponential backoff delay
+    delay = OCR_RETRY_DELAY_BASE * (2 ** (attempt - 1))
+    await asyncio.sleep(delay)
+    
+    print(f"Retrying {len(failed_pages)} failed pages (attempt {attempt})")
+    
+    # Create retry tasks
+    retry_tasks = []
+    for failed_page in failed_pages:
+        page_num = failed_page["page"]
+        task = process_single_page(pdf_path, page_num, semaphore, pdf_filename)
+        retry_tasks.append(task)
+    
+    # Process retries
+    retry_results = await asyncio.gather(*retry_tasks, return_exceptions=True)
+    
+    # Update retry count and handle exceptions
+    processed_results = []
+    for i, result in enumerate(retry_results):
+        if isinstance(result, Exception):
+            # Convert exception to failed result
+            result = {
+                "page": failed_pages[i]["page"],
+                "text": None,
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "method": "failed",
+                "success": False,
+                "error": str(result),
+                "retry_count": attempt
+            }
+        else:
+            result["retry_count"] = attempt
+        
+        processed_results.append(result)
+    
+    return processed_results
+
+
+async def process_pages_async_batch(
+    pdf_path: Path,
+    start_page: int,
+    end_page: int,
+    progress_callback: Optional[Callable[[str], None]] = None
+) -> Dict:
+    """
+    Process pages with async batch processing, caching, and intelligent retries.
     
     Args:
         pdf_path: Path to PDF file
         start_page: Starting page number (1-based)
         end_page: Ending page number (1-based)
+        progress_callback: Optional callback for progress updates
         
     Returns:
-        Dictionary with extracted text, token usage, and processing details
+        Dictionary with processing results and statistics
     """
-    results = {
-        "text_parts": [],
-        "total_input_tokens": 0,
-        "total_output_tokens": 0,
-        "pages_with_llm": [],
-        "pages_offline": [],
-        "processing_details": []
-    }
+    # Initialize cache database
+    await init_cache_database()
     
-    # Process each page
-    for page_num in range(start_page, end_page + 1):
-        print(f"Processing page {page_num}...")
+    start_time = time.time()
+    pdf_filename = pdf_path.name
+    
+    # Calculate batch information
+    total_pages = end_page - start_page + 1
+    batch_size = OCR_CONCURRENT_REQUESTS
+    num_batches = (total_pages + batch_size - 1) // batch_size
+    
+    if progress_callback:
+        progress_callback(
+            f"Your request will be processed in {num_batches} batches of up to {batch_size} pages each"
+        )
+    
+    # Create semaphore for rate limiting
+    semaphore = asyncio.Semaphore(OCR_CONCURRENT_REQUESTS)
+    
+    # Process pages in batches
+    all_results = []
+    pages = list(range(start_page, end_page + 1))
+    
+    for batch_idx in range(num_batches):
+        batch_start = batch_idx * batch_size
+        batch_end = min(batch_start + batch_size, len(pages))
+        batch_pages = pages[batch_start:batch_end]
         
-        # Convert page to image
-        page_image_base64 = convert_page_to_base64(pdf_path, page_num)
+        if progress_callback:
+            progress_callback(f"Starting batch {batch_idx + 1} of {num_batches} ({len(batch_pages)} pages)")
         
-        # Step 1: Detect if page has math
-        has_math, detect_input_tokens, detect_output_tokens = detect_math_content(page_image_base64)
-        results["total_input_tokens"] += detect_input_tokens
-        results["total_output_tokens"] += detect_output_tokens
+        # Create tasks for this batch
+        batch_tasks = []
+        for page_num in batch_pages:
+            task = process_single_page(pdf_path, page_num, semaphore, pdf_filename)
+            batch_tasks.append(task)
         
-        # Step 2: Extract text based on math detection
-        if has_math:
-            # Use LLM OCR for math pages
-            print(f"Page {page_num}: Detected math content, using LLM OCR")
-            print(f"  - Detection tokens: {detect_input_tokens} in, {detect_output_tokens} out")
-            extracted_text, ocr_input_tokens, ocr_output_tokens = ocr_page_with_llm(page_image_base64)
-            print(f"  - OCR tokens: {ocr_input_tokens} in, {ocr_output_tokens} out")
-            results["total_input_tokens"] += ocr_input_tokens
-            results["total_output_tokens"] += ocr_output_tokens
-            results["pages_with_llm"].append(page_num)
-            
-            # Add page header
-            results["text_parts"].append(f"--- Page {page_num} ---\n{extracted_text}")
-            results["processing_details"].append({
-                "page": page_num,
-                "method": "LLM OCR",
-                "has_math": True,
-                "tokens": {
-                    "detection": {"input": detect_input_tokens, "output": detect_output_tokens},
-                    "ocr": {"input": ocr_input_tokens, "output": ocr_output_tokens}
+        # Process batch
+        batch_results = await asyncio.gather(*batch_tasks, return_exceptions=True)
+        
+        # Handle exceptions
+        processed_batch_results = []
+        for i, result in enumerate(batch_results):
+            if isinstance(result, Exception):
+                result = {
+                    "page": batch_pages[i],
+                    "text": None,
+                    "input_tokens": 0,
+                    "output_tokens": 0,
+                    "method": "failed",
+                    "success": False,
+                    "error": str(result),
+                    "retry_count": 0
                 }
-            })
-        else:
-            # Use pymupdf4llm for non-math pages
-            print(f"Page {page_num}: No math content, using offline extraction")
-            print(f"  - Detection tokens: {detect_input_tokens} in, {detect_output_tokens} out")
-            try:
-                # Extract just this page using pymupdf4llm
-                page_text = pymupdf4llm.to_markdown(pdf_path, pages=[page_num - 1])
-                results["text_parts"].append(f"--- Page {page_num} ---\n{page_text}")
-                results["pages_offline"].append(page_num)
-                results["processing_details"].append({
-                    "page": page_num,
-                    "method": "Offline (pymupdf4llm)",
-                    "has_math": False,
-                    "tokens": {
-                        "detection": {"input": detect_input_tokens, "output": detect_output_tokens},
-                        "ocr": {"input": 0, "output": 0}
-                    }
-                })
-            except Exception as e:
-                print(f"Error extracting page {page_num} with pymupdf4llm: {str(e)}")
-                # Fallback to basic extraction
-                doc = pymupdf.open(pdf_path)
-                page = doc[page_num - 1]
-                page_text = page.get_text()
-                doc.close()
-                results["text_parts"].append(f"--- Page {page_num} ---\n{page_text}")
-                results["pages_offline"].append(page_num)
-                results["processing_details"].append({
-                    "page": page_num,
-                    "method": "Offline (basic)",
-                    "has_math": False,
-                    "tokens": {
-                        "detection": {"input": detect_input_tokens, "output": detect_output_tokens},
-                        "ocr": {"input": 0, "output": 0}
-                    }
-                })
+            processed_batch_results.append(result)
+        
+        # Retry failed pages
+        failed_pages = [r for r in processed_batch_results if not r["success"]]
+        
+        for retry_attempt in range(1, OCR_MAX_RETRIES + 1):
+            if not failed_pages:
+                break
+                
+            retry_results = await retry_failed_pages(
+                failed_pages, retry_attempt, pdf_path, semaphore, pdf_filename
+            )
+            
+            # Update results and prepare for next retry
+            successful_retries = []
+            still_failed = []
+            
+            for retry_result in retry_results:
+                if retry_result["success"]:
+                    successful_retries.append(retry_result)
+                    # Replace the failed result with successful one
+                    for j, original_result in enumerate(processed_batch_results):
+                        if original_result["page"] == retry_result["page"]:
+                            processed_batch_results[j] = retry_result
+                            break
+                else:
+                    still_failed.append(retry_result)
+            
+            failed_pages = still_failed
+            
+            if progress_callback and successful_retries:
+                progress_callback(f"Batch {batch_idx + 1}: Recovered {len(successful_retries)} pages on retry {retry_attempt}")
+        
+        # Apply PyMuPDF fallback to still failed pages
+        final_failed_pages = [r for r in processed_batch_results if not r["success"]]
+        if final_failed_pages:
+            if progress_callback:
+                progress_callback(f"Batch {batch_idx + 1}: Applying fallback extraction to {len(final_failed_pages)} pages")
+            
+            for failed_result in final_failed_pages:
+                try:
+                    fallback_text = extract_with_pymupdf_fallback(pdf_path, failed_result["page"])
+                    failed_result.update({
+                        "text": fallback_text,
+                        "method": "pymupdf_fallback",
+                        "success": True,
+                        "error": None
+                    })
+                except Exception as e:
+                    failed_result["error"] = f"Fallback failed: {str(e)}"
+        
+        all_results.extend(processed_batch_results)
+        
+        if progress_callback:
+            progress_callback(f"Batch {batch_idx + 1} of {num_batches} completed")
     
-    # Combine all text
-    results["full_text"] = "\n\n".join(results["text_parts"])
+    # Sort results by page number
+    all_results.sort(key=lambda x: x["page"])
+    
+    # Compile final results
+    text_parts = []
+    total_input_tokens = 0
+    total_output_tokens = 0
+    cached_pages = []
+    llm_pages = []
+    fallback_pages = []
+    processing_details = []
+    
+    for result in all_results:
+        # Add text with page header
+        if result["text"]:
+            text_parts.append(f"--- Page {result['page']} ---\n{result['text']}")
+        
+        # Accumulate tokens
+        total_input_tokens += result["input_tokens"]
+        total_output_tokens += result["output_tokens"]
+        
+        # Categorize pages
+        if result["method"] == "cached":
+            cached_pages.append(result["page"])
+        elif result["method"] == "llm":
+            llm_pages.append(result["page"])
+        elif result["method"] == "pymupdf_fallback":
+            fallback_pages.append(result["page"])
+        
+        # Processing details
+        processing_details.append({
+            "page": result["page"],
+            "method": {
+                "cached": "Cached",
+                "llm": "LLM OCR",
+                "pymupdf_fallback": "PyMuPDF Fallback"
+            }.get(result["method"], "Failed"),
+            "tokens": {"input": result["input_tokens"], "output": result["output_tokens"]},
+            "cached": result["method"] == "cached",
+            "retry_count": result["retry_count"]
+        })
+    
+    processing_time = time.time() - start_time
+    cache_hit_rate = len(cached_pages) / len(all_results) * 100 if all_results else 0
+    
+    # Clean old cache entries in background
+    asyncio.create_task(clean_old_cache_entries())
     
     # Create summary
-    llm_count = len(results["pages_with_llm"])
-    offline_count = len(results["pages_offline"])
-    results["summary"] = f"Processed pages {start_page}-{end_page}: {llm_count} pages with LLM OCR, {offline_count} pages with offline extraction"
+    summary_parts = []
+    if llm_pages:
+        summary_parts.append(f"{len(llm_pages)} pages with fresh LLM OCR")
+    if cached_pages:
+        summary_parts.append(f"{len(cached_pages)} pages from cache")
+    if fallback_pages:
+        summary_parts.append(f"{len(fallback_pages)} pages with fallback extraction")
     
-    return results
+    summary = f"Processed pages {start_page}-{end_page}: " + ", ".join(summary_parts)
+    
+    if progress_callback:
+        progress_callback(f"✅ Processing complete! {cache_hit_rate:.1f}% cache hit rate")
+    
+    return {
+        "full_text": "\n\n".join(text_parts),
+        "text_parts": text_parts,
+        "total_input_tokens": total_input_tokens,
+        "total_output_tokens": total_output_tokens,
+        "successful_pages": [r["page"] for r in all_results if r["success"]],
+        "failed_pages": [{"page": r["page"], "error": r["error"]} for r in all_results if not r["success"]],
+        "cached_pages": cached_pages,
+        "llm_pages": llm_pages,
+        "fallback_pages": fallback_pages,
+        "processing_time": processing_time,
+        "cache_hit_rate": cache_hit_rate,
+        "pages_processed": len(all_results),
+        "retry_count": sum(r["retry_count"] for r in all_results),
+        "processing_details": processing_details,
+        "summary": summary
+    }

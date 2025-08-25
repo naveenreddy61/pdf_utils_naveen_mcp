@@ -234,73 +234,144 @@ def image_extraction_gallery(images_data, file_hash, start_page, end_page):
 
 
 def ocr_result_display(results, file_hash, start_page, end_page, text_filename):
-    """Display OCR extraction results with token usage and processing details."""
+    """Display async OCR extraction results with caching metrics and processing details."""
     # Generate unique ID for the preview content
     preview_id = f"ocr-preview-{file_hash}-{start_page}-{end_page}"
     
-    # Create processing details display
+    # Create performance metrics
+    cache_hit_rate = results.get("cache_hit_rate", 0)
+    processing_time = results.get("processing_time", 0)
+    
+    # Create detailed page statistics
+    cached_pages = results.get("cached_pages", [])
+    llm_pages = results.get("llm_pages", [])
+    fallback_pages = results.get("fallback_pages", [])
+    
+    # Create processing details display with icons and colors
     page_details = []
     for detail in results["processing_details"]:
-        method_color = "#28a745" if detail["method"].startswith("LLM") else "#6c757d"
+        if detail["method"] == "Cached":
+            icon = "💾"
+            method_color = "#17a2b8"  # Info blue
+        elif detail["method"] == "LLM OCR":
+            icon = "🤖"
+            method_color = "#28a745"  # Success green
+        elif detail["method"] == "PyMuPDF Fallback":
+            icon = "📄"
+            method_color = "#fd7e14"  # Warning orange
+        else:
+            icon = "❌"
+            method_color = "#dc3545"  # Danger red
+        
+        retry_text = f" (retry {detail['retry_count']})" if detail.get('retry_count', 0) > 0 else ""
+        token_info = f" | {detail['tokens']['input']+detail['tokens']['output']} tokens" if detail['tokens']['input']+detail['tokens']['output'] > 0 else ""
+        
         page_details.append(
             Li(
-                f"Page {detail['page']}: {detail['method']}",
-                style=f"color: {method_color}; padding: 2px 0;"
+                f"{icon} Page {detail['page']}: {detail['method']}{retry_text}{token_info}",
+                style=f"color: {method_color}; padding: 2px 0; font-size: 0.9em;"
             )
         )
     
+    # Progress messages display
+    progress_section = []
+    if results.get("progress_messages"):
+        progress_section = [
+            Div(
+                H4("Processing Progress", style="margin-bottom: 10px;"),
+                Ul(
+                    *[Li(msg, style="padding: 2px 0; font-size: 0.9em; color: #6c757d;") 
+                      for msg in results["progress_messages"]],
+                    style="list-style-type: none; padding-left: 0;"
+                ),
+                cls="progress-messages",
+                style="background-color: #f8f9fa; padding: 15px; border-radius: 4px; margin-bottom: 15px;"
+            )
+        ]
+    
     return Div(
-        H3("Text Extracted with LLM OCR"),
+        H3("✨ Async OCR Processing Complete"),
         
-        # Summary section
+        # Summary section with performance highlights
         Div(
-            P(results["summary"], style="font-weight: bold; color: #155724;"),
+            P(results["summary"], style="font-weight: bold; color: #155724; margin-bottom: 10px;"),
+            Div(
+                f"⚡ Processed in {processing_time:.1f}s | " +
+                f"💾 {cache_hit_rate:.1f}% cache hit rate | " + 
+                f"🔄 {results.get('retry_count', 0)} retries",
+                style="font-size: 0.9em; color: #6c757d;"
+            ),
             cls="alert",
-            style="background-color: #d4edda; border: 1px solid #c3e6cb; padding: 10px; border-radius: 4px; margin-bottom: 15px;"
+            style="background-color: #d4edda; border: 1px solid #c3e6cb; padding: 15px; border-radius: 4px; margin-bottom: 15px;"
         ),
         
-        # Token usage section
+        # Performance metrics section
         Div(
-            H4("Token Usage", style="margin-bottom: 10px;"),
-            P(f"Input tokens: {results['total_input_tokens']:,}", style="margin: 5px 0;"),
-            P(f"Output tokens: {results['total_output_tokens']:,}", style="margin: 5px 0;"),
-            P(f"Total tokens: {results['total_input_tokens'] + results['total_output_tokens']:,}", 
-              style="margin: 5px 0; font-weight: bold;"),
-            cls="token-usage",
+            H4("Performance Metrics", style="margin-bottom: 10px;"),
+            Div(
+                # Cache performance
+                Div(
+                    Div("💾 Cache Performance", style="font-weight: bold; margin-bottom: 5px;"),
+                    P(f"Hit rate: {cache_hit_rate:.1f}% ({len(cached_pages)} of {results.get('pages_processed', 0)} pages)", style="margin: 2px 0;"),
+                    P(f"Fresh LLM calls: {len(llm_pages)} pages", style="margin: 2px 0;"),
+                    P(f"Fallback used: {len(fallback_pages)} pages", style="margin: 2px 0;"),
+                    style="flex: 1; margin-right: 15px;"
+                ),
+                # Token usage
+                Div(
+                    Div("🪙 Token Usage", style="font-weight: bold; margin-bottom: 5px;"),
+                    P(f"Input tokens: {results['total_input_tokens']:,}", style="margin: 2px 0;"),
+                    P(f"Output tokens: {results['total_output_tokens']:,}", style="margin: 2px 0;"),
+                    P(f"Total tokens: {results['total_input_tokens'] + results['total_output_tokens']:,}", 
+                      style="margin: 2px 0; font-weight: bold;"),
+                    style="flex: 1;"
+                ),
+                style="display: flex; align-items: flex-start;"
+            ),
+            cls="metrics",
             style="background-color: #f8f9fa; padding: 15px; border-radius: 4px; margin-bottom: 15px;"
         ),
         
+        # Progress messages (if any)
+        *progress_section,
+        
         # Processing details
         Div(
-            H4("Processing Details", style="margin-bottom: 10px;"),
-            Ul(*page_details, style="list-style-type: none; padding-left: 0;"),
+            H4("Page-by-Page Details", style="margin-bottom: 10px;"),
+            Ul(*page_details, style="list-style-type: none; padding-left: 0; max-height: 200px; overflow-y: auto;"),
             cls="processing-details",
             style="background-color: #f8f9fa; padding: 15px; border-radius: 4px; margin-bottom: 15px;"
         ),
         
-        # Text info
-        P(f"Total characters: {len(results['full_text'])}"),
+        # Text info and failed pages (if any)
+        Div(
+            P(f"📄 Total characters: {len(results['full_text']):,}"),
+            *([P(f"⚠️ {len(results.get('failed_pages', []))} pages failed completely", 
+                 style="color: #dc3545; font-weight: bold;")] 
+              if results.get('failed_pages') else []),
+            style="margin-bottom: 15px;"
+        ),
         
         # Action buttons
         Div(
-            A("Download Full Text", 
+            A("📥 Download Full Text", 
               href=f"/{text_filename}",
               download=text_filename,
               cls="button",
-              style="margin-right: 10px;"),
-            Button("Copy to Clipboard", 
+              style="margin-right: 10px; background-color: #28a745;"),
+            Button("📋 Copy to Clipboard", 
                    onclick=f"""
                        const text = document.getElementById('{preview_id}').textContent;
                        navigator.clipboard.writeText(text).then(() => {{
-                           this.textContent = 'Copied!';
+                           this.textContent = '✅ Copied!';
                            this.style.backgroundColor = '#28a745';
                            setTimeout(() => {{
-                               this.textContent = 'Copy to Clipboard';
+                               this.textContent = '📋 Copy to Clipboard';
                                this.style.backgroundColor = '#007bff';
                            }}, 2000);
                        }}).catch(err => {{
                            console.error('Failed to copy: ', err);
-                           this.textContent = 'Copy failed';
+                           this.textContent = '❌ Copy failed';
                            this.style.backgroundColor = '#dc3545';
                        }});
                    """,
@@ -309,10 +380,10 @@ def ocr_result_display(results, file_hash, start_page, end_page, text_filename):
         ),
         
         # Text preview
-        H4("Preview:"),
+        H4("📖 Text Preview:"),
         Pre(results["full_text"], 
             id=preview_id, 
-            style="white-space: pre-wrap; word-wrap: break-word; max-height: 400px; overflow-y: auto; background-color: #f8f9fa; padding: 15px; border-radius: 4px;"),
+            style="white-space: pre-wrap; word-wrap: break-word; max-height: 400px; overflow-y: auto; background-color: #f8f9fa; padding: 15px; border-radius: 4px; border-left: 4px solid #007bff;"),
         
         cls="result-area"
     )

@@ -37,4 +37,13 @@ OCR_TEMPERATURE = 0.1
 OCR_TIMEOUT = 60
 OCR_DPI = 150  # DPI for page image conversion
 OCR_MAX_TOKENS = 4096
-MATH_DETECTION_MODEL = "gemini/gemini-2.5-flash-lite"
+
+# Async OCR settings
+OCR_CONCURRENT_REQUESTS = 20  # Max concurrent LLM requests
+OCR_MAX_RETRIES = 3  # Max retry attempts per page
+OCR_RETRY_DELAY_BASE = 1.0  # Base delay for exponential backoff (seconds)
+OCR_BATCH_TIMEOUT = 300  # Overall timeout for batch processing (seconds)
+
+# OCR Caching settings
+OCR_CACHE_RETENTION_DAYS = 14  # Keep cached OCR results for 2 weeks
+OCR_CACHE_DB_PATH = Path("data/ocr_cache.db")  # SQLite DB for caching
