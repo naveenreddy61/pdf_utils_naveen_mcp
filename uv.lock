@@ -954,6 +954,7 @@ dependencies = [
     { name = "pillow" },
     { name = "pymupdf" },
     { name = "pymupdf4llm" },
+    { name = "pypandoc" },
     { name = "python-dotenv" },
     { name = "python-fasthtml" },
     { name = "pyyaml" },
@@ -967,6 +968,7 @@ requires-dist = [
     { name = "pillow", specifier = ">=11.3.0" },
     { name = "pymupdf", specifier = ">=1.24.0" },
     { name = "pymupdf4llm", specifier = ">=0.0.27" },
+    { name = "pypandoc", specifier = ">=1.15" },
     { name = "python-dotenv", specifier = ">=1.1.1" },
     { name = "python-fasthtml", specifier = ">=0.9.0" },
     { name = "pyyaml", specifier = ">=6.0.2" },
@@ -1215,6 +1217,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/03/99/2634b56ff2b68558e742c6e10cd798ed3b5b5af6cc659454b9f37e7b4ecf/pymupdf4llm-0.0.27.tar.gz", hash = "sha256:35cc8bd6e0968bc1300b1fe4500f52e47da6b570af19af6c193e5fb6ee367008", size = 29368, upload-time = "2025-07-19T11:52:01.059Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/e9/c8/7eed2e902b61574b15b295017ddb5738c4970aa9ab76903fbaace28a522e/pymupdf4llm-0.0.27-py3-none-any.whl", hash = "sha256:2eaaf9419c35520efda38f3806a276f2ec6cd29564fbb60a5c9c53a49fedb13c", size = 30055, upload-time = "2025-07-19T11:52:04.089Z" },
+]
+
+[[package]]
+name = "pypandoc"
+version = "1.15"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/e1/88/26e650d053df5f3874aa3c05901a14166ce3271f58bfe114fd776987efbd/pypandoc-1.15.tar.gz", hash = "sha256:ea25beebe712ae41d63f7410c08741a3cab0e420f6703f95bc9b3a749192ce13", size = 32940, upload-time = "2025-01-08T17:39:58.705Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/61/06/0763e0ccc81754d3eadb21b2cb86cf21bdedc9b52698c2ad6785db7f0a4e/pypandoc-1.15-py3-none-any.whl", hash = "sha256:4ededcc76c8770f27aaca6dff47724578428eca84212a31479403a9731fc2b16", size = 21321, upload-time = "2025-01-08T17:39:09.928Z" },
 ]
 
 [[package]]

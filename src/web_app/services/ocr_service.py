@@ -245,7 +245,7 @@ def process_pages_with_smart_ocr(
             results["pages_with_llm"].append(page_num)
             
             # Add page header
-            results["text_parts"].append(f"--- Page {page_num} (LLM OCR) ---\n{extracted_text}")
+            results["text_parts"].append(f"--- Page {page_num} ---\n{extracted_text}")
             results["processing_details"].append({
                 "page": page_num,
                 "method": "LLM OCR",
@@ -262,7 +262,7 @@ def process_pages_with_smart_ocr(
             try:
                 # Extract just this page using pymupdf4llm
                 page_text = pymupdf4llm.to_markdown(pdf_path, pages=[page_num - 1])
-                results["text_parts"].append(f"--- Page {page_num} (Offline) ---\n{page_text}")
+                results["text_parts"].append(f"--- Page {page_num} ---\n{page_text}")
                 results["pages_offline"].append(page_num)
                 results["processing_details"].append({
                     "page": page_num,
@@ -280,7 +280,7 @@ def process_pages_with_smart_ocr(
                 page = doc[page_num - 1]
                 page_text = page.get_text()
                 doc.close()
-                results["text_parts"].append(f"--- Page {page_num} (Offline - Basic) ---\n{page_text}")
+                results["text_parts"].append(f"--- Page {page_num} ---\n{page_text}")
                 results["pages_offline"].append(page_num)
                 results["processing_details"].append({
                     "page": page_num,
