@@ -1,0 +1,16 @@
+Extract all text from this PDF document. The document may contain one or two pages.
+
+Requirements:
+- Transcribe text accurately from each page
+- Typeset any equations and mathematical expressions as LaTeX enclosed in $ for inline math or $$ for display math
+- Describe any images, figures, or diagrams in [Figure: description] format
+- Maintain the original structure and formatting of the document
+- Preserve all text content accurately
+- Use proper LaTeX commands for mathematical symbols and expressions
+- For tables, format them clearly with proper alignment
+
+For multi-page documents:
+- Clearly separate the transcribed text for each page using '--- Page [Page Number] ---' as a header
+- Ensure each page's content is complete and properly formatted
+
+Output the extracted text directly without any preamble or explanation.

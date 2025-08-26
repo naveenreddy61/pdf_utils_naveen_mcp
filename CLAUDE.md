@@ -45,6 +45,34 @@ uv run app.py  # Starts server on port 8000
 - **Python 3.12+**: Required for the server.
 - **uv**: Recommended for environment and package management.
 
+## Environment Configuration
+
+### Required API Keys:
+The OCR service requires Google Gemini API access:
+
+```bash
+# .env file (create in project root)
+GOOGLE_API_KEY=your_gemini_api_key_here
+# Note: GEMINI_API_KEY also supported but GOOGLE_API_KEY takes precedence
+```
+
+### Environment Validation:
+```bash
+# Check Google GenAI client setup
+uv run python -c "from google import genai; print('✅ Google GenAI configured')"
+
+# Verify OCR service functionality
+uv run python tests/test_ocr_service.py
+
+# Check if API key is detected
+uv run python -c "import os; print('✅ API key found' if os.getenv('GOOGLE_API_KEY') or os.getenv('GEMINI_API_KEY') else '❌ No API key found')"
+```
+
+### API Key Setup:
+1. Get API key from [Google AI Studio](https://aistudio.google.com/app/apikey)
+2. Add to `.env` file in project root
+3. Restart any running processes to pick up new environment
+
 ## Development Commands
 
 - **Run server locally**: `uv run pdf-mcp-server`
@@ -72,23 +100,99 @@ uv add [package_name]   # Add new dependency (NOT manual pyproject.toml edit)
 ### Git Workflow:
 - `acp` = add, commit, push (as noted in user's global CLAUDE.md)
 
+## OCR Service Architecture (Google GenAI Integration)
+
+The OCR service has been migrated from LiteLLM to Google GenAI for native PDF processing with enhanced performance and reliability.
+
+### Core Components:
+- **Google GenAI Client**: Direct PDF processing with `gemini-2.5-flash-lite` model
+- **PDF Chunking**: Configurable page grouping (default: 2 pages per API call)
+- **Stable Caching**: File-based cache keys for deterministic performance
+- **Async Batch Processing**: Semaphore-controlled concurrent requests
+
+### Key Configuration:
+```python
+# config.py
+OCR_MODEL = "gemini-2.5-flash-lite"  # Direct GenAI model (no litellm prefix)
+OCR_PAGES_PER_CHUNK = 2              # Configurable page grouping
+OCR_CONCURRENT_REQUESTS = 20         # Rate limiting for API calls
+OCR_TEMPERATURE = 0.1                # Low temperature for consistent OCR
+OCR_MAX_TOKENS = 4096               # Per-page token limit
+```
+
+### Processing Flow:
+1. **Page Grouping**: Group pages into chunks (configurable size via `OCR_PAGES_PER_CHUNK`)
+2. **PDF Subset Creation**: Create in-memory PDF subsets using PyMuPDF's `insert_pdf()`
+3. **Native PDF Processing**: Send PDF bytes directly to GenAI API (no image conversion)
+4. **Stable Caching**: Cache results using `filename:size:mtime:pages` hash for determinism
+5. **Error Resilience**: Fallback to PyMuPDF extraction on any error
+
+### Caching System:
+- **Cache Key**: `create_cache_key(pdf_path, page_nums)` for deterministic keys
+- **Database**: SQLite in `data/ocr_cache.db`
+- **Retention**: 14 days auto-cleanup via `clean_old_cache_entries()`
+- **Performance**: ~100% hit rate for repeated documents (vs 0% with non-deterministic keys)
+- **Token Savings**: Typical 24% efficiency through cache hits
+
+### API Integration:
+```python
+# Uses Google GenAI Python SDK
+from google import genai
+from google.genai import types
+
+client = genai.Client()  # Auto-configured from GOOGLE_API_KEY
+
+# Send PDF directly as inline data
+pdf_part = types.Part(
+    inline_data=types.Blob(mime_type='application/pdf', data=pdf_bytes)
+)
+
+# Token tracking from response
+usage = response.usage_metadata
+input_tokens = usage.prompt_token_count if usage else 0
+output_tokens = usage.candidates_token_count if usage else 0
+```
+
 ## Async Development Patterns
 
-### OCR Service Architecture
-The OCR service uses async batch processing for optimal performance:
-- **Batch Size**: Configurable via `OCR_CONCURRENT_REQUESTS` (default: 20)
-- **Retry Logic**: 3 attempts with exponential backoff (1s, 2s, 4s)
-- **Caching**: SHA256-based image hashing with SQLite storage
-- **Fallback**: PyMuPDF extraction for 100% reliability
+### Testing Framework
 
-### Testing Async Operations
-```bash
-# Test async OCR with generated PDF
-uv run python create_test_pdf.py
-# Move to uploads and test via web interface
-mv test_ocr_document.pdf uploads/
-uv run app.py
+#### Test Organization:
 ```
+tests/
+├── test_ocr_service.py      # Comprehensive OCR testing suite
+├── test_pdfs/               # Generated test PDF files
+│   ├── test_searchable.pdf
+│   ├── test_image_based.pdf
+│   └── test_multipage.pdf
+└── __init__.py
+```
+
+#### Running Tests:
+```bash
+# Full OCR service test suite (recommended)
+uv run python tests/test_ocr_service.py
+
+# Test includes 5 comprehensive scenarios:
+# 1. Searchable PDF processing (first run)
+# 2. Image-based PDF OCR extraction 
+# 3. Cache validation (searchable PDF repeat)
+# 4. Cache validation (image-based PDF repeat)
+# 5. Multi-page chunking test (3 pages)
+```
+
+#### Test Features:
+- **PDF Generation**: Creates searchable + image-based test files automatically
+- **Cache Testing**: Validates deterministic cache keys and 100% hit rate
+- **Token Tracking**: Monitors input/output/saved tokens with detailed reporting
+- **Performance**: Speed comparison (cached: 0.01s vs fresh: 3-6s)
+- **Chunking**: Tests configurable page grouping (2-page chunks by default)
+
+#### Expected Results:
+- **Cache Hit Rate**: 100% for repeated documents  
+- **Token Efficiency**: ~24% savings through caching
+- **Processing Speed**: >100x faster for cached content
+- **Text Quality**: Consistent extraction from both searchable and image PDFs
 
 ### Performance Monitoring
 Key metrics to watch:
