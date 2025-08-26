@@ -238,14 +238,15 @@ def ocr_result_display(results, file_hash, start_page, end_page, text_filename):
     # Generate unique ID for the preview content
     preview_id = f"ocr-preview-{file_hash}-{start_page}-{end_page}"
     
-    # Create performance metrics
-    cache_hit_rate = results.get("cache_hit_rate", 0)
-    processing_time = results.get("processing_time", 0)
-    
     # Create detailed page statistics
     cached_pages = results.get("cached_pages", [])
     llm_pages = results.get("llm_pages", [])
     fallback_pages = results.get("fallback_pages", [])
+    
+    # Calculate performance metrics
+    pages_processed = results.get("pages_processed", 0)
+    cache_hit_rate = (len(cached_pages) / pages_processed) * 100 if pages_processed > 0 else 0
+    processing_time = results.get("processing_time", 0)
     
     # Create processing details display with icons and colors
     page_details = []
