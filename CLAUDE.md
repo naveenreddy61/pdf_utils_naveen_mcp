@@ -114,14 +114,14 @@ The OCR service has been migrated from LiteLLM to Google GenAI for native PDF pr
 ```python
 # config.py
 OCR_MODEL = "gemini-2.5-flash-lite"  # Direct GenAI model (no litellm prefix)
-OCR_PAGES_PER_CHUNK = 2              # Configurable page grouping
+# OCR processes one page at a time for simplicity and reliability
 OCR_CONCURRENT_REQUESTS = 20         # Rate limiting for API calls
 OCR_TEMPERATURE = 0.1                # Low temperature for consistent OCR
 OCR_MAX_TOKENS = 4096               # Per-page token limit
 ```
 
 ### Processing Flow:
-1. **Page Grouping**: Group pages into chunks (configurable size via `OCR_PAGES_PER_CHUNK`)
+1. **Single Page Processing**: Process one page at a time for reliability and simplicity
 2. **PDF Subset Creation**: Create in-memory PDF subsets using PyMuPDF's `insert_pdf()`
 3. **Native PDF Processing**: Send PDF bytes directly to GenAI API (no image conversion)
 4. **Stable Caching**: Cache results using `filename:size:mtime:pages` hash for determinism

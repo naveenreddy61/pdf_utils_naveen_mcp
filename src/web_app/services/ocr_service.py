@@ -19,7 +19,6 @@ from config import (
     OCR_TEMPERATURE, 
     OCR_TIMEOUT, 
     OCR_MAX_TOKENS,
-    OCR_PAGES_PER_CHUNK,
     OCR_CONCURRENT_REQUESTS,
     OCR_MAX_RETRIES,
     OCR_RETRY_DELAY_BASE,
@@ -137,45 +136,7 @@ def create_cache_key(pdf_path: Path, page_nums: List[int]) -> str:
     return compute_content_hash(key_data.encode('utf-8'))
 
 
-def parse_llm_response(response_text: str, page_nums: List[int]) -> Dict[int, str]:
-    """
-    Parse the LLM response into a dictionary mapping page number to text.
-    
-    Args:
-        response_text: The LLM's response text
-        page_nums: List of page numbers that were processed
-        
-    Returns:
-        Dictionary mapping page number to extracted text
-    """
-    page_texts = {}
-    
-    # If only one page, return the entire response
-    if len(page_nums) == 1:
-        page_texts[page_nums[0]] = response_text.strip()
-        return page_texts
-    
-    # Split by page headers
-    parts = re.split(r'--- Page \d+ ---', response_text)
-    headers = re.findall(r'--- Page (\d+) ---', response_text)
-    
-    # Clean up parts (remove empty strings)
-    cleaned_parts = [p.strip() for p in parts if p.strip()]
-    
-    # Match headers with parts
-    if len(headers) == len(cleaned_parts):
-        for i, header_num_str in enumerate(headers):
-            header_num = int(header_num_str)
-            if header_num in page_nums:
-                page_texts[header_num] = cleaned_parts[i]
-    else:
-        # Fallback: distribute text evenly or assign to first page
-        print(f"Warning: Could not parse LLM response for pages {page_nums}.")
-        page_texts[page_nums[0]] = response_text.strip()
-        for i in range(1, len(page_nums)):
-            page_texts[page_nums[i]] = "[OCR Parsing Failed]"
-    
-    return page_texts
+# parse_llm_response function removed - no longer needed with single page processing
 
 
 async def ocr_pdf_subset_with_llm(
@@ -214,14 +175,14 @@ async def ocr_pdf_subset_with_llm(
     try:
         # Load OCR prompt
         prompt = load_ocr_prompt()
-        full_prompt = f"{prompt}\nThe document contains pages: {', '.join(map(str, page_nums))}."
+        # Since we only process one page at a time, no need to mention page numbers
         
         # Create a Part object with the PDF data directly
         pdf_part = types.Part(
             inline_data=types.Blob(mime_type='application/pdf', data=pdf_subset_bytes)
         )
         
-        contents = [full_prompt, pdf_part]
+        contents = [prompt, pdf_part]
         
         # Make the async API call
         response = await asyncio.wait_for(
@@ -230,7 +191,7 @@ async def ocr_pdf_subset_with_llm(
                 contents=contents,
                 config=types.GenerateContentConfig(
                     temperature=OCR_TEMPERATURE,
-                    max_output_tokens=OCR_MAX_TOKENS * len(page_nums)
+                    max_output_tokens=OCR_MAX_TOKENS  # Only one page
                 )
             ),
             timeout=OCR_TIMEOUT
@@ -289,25 +250,18 @@ async def process_page_chunk(
                 pdf_subset_bytes, page_nums, pdf_filename, pdf_path
             )
             
-            # Parse the response into individual page texts
-            parsed_texts = parse_llm_response(combined_text, page_nums)
-            
-            # Create results for each page
-            results = []
-            num_pages = len(page_nums)
-            for page_num in page_nums:
-                results.append({
-                    "page": page_num,
-                    "text": parsed_texts.get(page_num, "[OCR Parsing Error]"),
-                    "input_tokens": input_tokens // num_pages,  # Distribute tokens evenly
-                    "output_tokens": output_tokens // num_pages,
-                    "method": method,
-                    "success": True,
-                    "error": None,
-                    "retry_count": 0
-                })
-            
-            return results
+            # Since we process one page at a time, no parsing needed
+            # Return single page result
+            return [{
+                "page": page_nums[0],  # Only one page in chunk
+                "text": combined_text.strip(),
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+                "method": method,
+                "success": True,
+                "error": None,
+                "retry_count": 0
+            }]
             
         except Exception as e:
             # Return failed results for all pages in the chunk
@@ -353,13 +307,8 @@ async def retry_failed_chunks(
     failed_page_nums = sorted([r['page'] for r in failed_pages])
     page_chunks = []
     
-    # Group pages into chunks of OCR_PAGES_PER_CHUNK
-    i = 0
-    while i < len(failed_page_nums):
-        chunk_end = min(i + OCR_PAGES_PER_CHUNK, len(failed_page_nums))
-        chunk = failed_page_nums[i:chunk_end]
-        page_chunks.append(chunk)
-        i = chunk_end
+    # Process one page at a time
+    page_chunks = [[page] for page in failed_page_nums]
     
     # Create retry tasks for chunks
     retry_tasks = [
@@ -426,18 +375,12 @@ async def process_document_async(
     page_list = list(range(start_page, end_page + 1))
     page_chunks = []
     
-    # Create chunks based on OCR_PAGES_PER_CHUNK
-    i = 0
-    while i < len(page_list):
-        chunk_end = min(i + OCR_PAGES_PER_CHUNK, len(page_list))
-        chunk = page_list[i:chunk_end]
-        page_chunks.append(chunk)
-        i = chunk_end
-    
+    # Process one page at a time
+    page_chunks = [[page] for page in page_list]
     num_api_calls = len(page_chunks)
     
     if progress_callback:
-        progress_callback(f"Processing {total_pages} pages in {num_api_calls} API calls")
+        progress_callback(f"Processing {total_pages} pages (1 page per API call)")
     
     # Create semaphore for rate limiting
     semaphore = asyncio.Semaphore(OCR_CONCURRENT_REQUESTS)

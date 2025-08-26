@@ -222,9 +222,9 @@ async def main():
     
     # Import configuration to show settings
     try:
-        from config import OCR_MODEL, OCR_PAGES_PER_CHUNK, OCR_CONCURRENT_REQUESTS
+        from config import OCR_MODEL, OCR_CONCURRENT_REQUESTS
         print(f"   • OCR Model: {OCR_MODEL}")
-        print(f"   • Pages per chunk: {OCR_PAGES_PER_CHUNK}")
+        print(f"   • Pages per chunk: 1 (single page processing)")
         print(f"   • Concurrent requests: {OCR_CONCURRENT_REQUESTS}")
     except ImportError:
         print("   • Could not load configuration")

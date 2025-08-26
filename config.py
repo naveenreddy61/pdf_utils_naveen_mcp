@@ -36,7 +36,7 @@ OCR_MODEL = "gemini-2.5-flash-lite"  # Direct GenAI model
 OCR_TEMPERATURE = 0.1
 OCR_TIMEOUT = 60
 OCR_MAX_TOKENS = 4096
-OCR_PAGES_PER_CHUNK = 2  # Number of pages to process per API call
+# OCR processes one page at a time for simplicity and reliability
 
 # Async OCR settings
 OCR_CONCURRENT_REQUESTS = 20  # Max concurrent LLM requests
