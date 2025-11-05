@@ -20,7 +20,9 @@ async def cleanup_old_files():
             file_path.unlink()
         
         # Delete processed files (with mcp_ prefix)
-        for f in UPLOAD_DIR.glob(f"mcp_{file_record.stored_filename.replace('.pdf', '')}_*"):
+        # Remove extension from stored filename for pattern matching
+        base_name = file_record.stored_filename.rsplit('.', 1)[0]
+        for f in UPLOAD_DIR.glob(f"mcp_{base_name}_*"):
             f.unlink()
         
         # Remove from database
