@@ -4,11 +4,12 @@ import os
 from datetime import datetime
 from fasthtml.common import *
 from starlette.requests import Request
+from google import genai
 from config import UPLOAD_DIR, MAX_FILE_SIZE_BYTES, MAX_FILE_SIZE_MB, ALLOWED_EXTENSIONS
 from src.web_app.core.database import (
     FileRecord, get_file_info, update_last_accessed, insert_file_record
 )
-from src.web_app.core.session_settings import get_session_settings
+from src.web_app.core.session_settings import get_session_settings, update_session_settings, save_available_models
 from src.web_app.core.utils import calculate_file_hash, sanitize_filename
 from src.web_app.services.pdf_service import get_page_count
 from src.web_app.ui.components import (
@@ -198,14 +199,8 @@ def setup_routes(app, rt):
                                 name="gemini_api_key",
                                 placeholder="Enter your Gemini API key (session only)",
                                 value="••••••••" if user_settings['gemini_api_key'] else "",
-                                style="width: 100%; padding: 10px; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 4px;"
+                                style="width: 100%; padding: 10px; margin-bottom: 15px; border: 1px solid #ccc; border-radius: 4px;"
                             ),
-                            Button(
-                                "Clear API Key",
-                                type="button",
-                                onclick="document.getElementById('api-key-input').value = ''; saveSettings();",
-                                style="background-color: #dc3545; margin-bottom: 15px;"
-                            ) if user_settings['gemini_api_key'] else None,
                             style="margin-bottom: 20px;"
                         ),
 
@@ -214,34 +209,39 @@ def setup_routes(app, rt):
                             Label("OCR Model", _for="model-select", style="display: block; margin-bottom: 5px; font-weight: bold;"),
                             P("Select the Gemini model to use for OCR processing",
                               style="font-size: 0.9em; color: #6c757d; margin-bottom: 10px;"),
-                            Select(
-                                # If we have available models in session, populate dropdown
-                                *([Option(
-                                    f"{model['display_name']} ({model['name']})",
-                                    value=model['name'],
-                                    selected=(model['name'] == user_settings['ocr_model'])
-                                ) for model in user_settings['available_models']]
-                                if user_settings['available_models']
-                                else [Option(user_settings['ocr_model'], value=user_settings['ocr_model'], selected=True)]),
-                                id="model-select",
-                                name="ocr_model",
-                                style="width: 100%; padding: 10px; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 4px;"
+                            Div(
+                                Select(
+                                    # If we have available models in session, populate dropdown
+                                    *([Option(
+                                        f"{model['display_name']} ({model['name']})",
+                                        value=model['name'],
+                                        selected=(model['name'] == user_settings['ocr_model'])
+                                    ) for model in user_settings['available_models']]
+                                    if user_settings['available_models']
+                                    else [Option(user_settings['ocr_model'], value=user_settings['ocr_model'], selected=True)]),
+                                    id="model-select",
+                                    name="ocr_model",
+                                    style="width: 100%; padding: 10px; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 4px;"
+                                ),
+                                id="model-select-container"
                             ),
                             Button(
                                 "🔄 Fetch Available Models",
-                                type="button",
-                                onclick="fetchModels()",
-                                id="fetch-models-btn",
+                                hx_post="/fetch-models",
+                                hx_target="#model-select-container",
+                                hx_swap="innerHTML",
+                                hx_indicator=".htmx-indicator",
+                                cls="button",
                                 style="background-color: #17a2b8; margin-bottom: 15px;"
                             ),
+                            Span("⏳ Fetching...", cls="htmx-indicator", style="display: none; margin-left: 10px; color: #17a2b8;"),
                             Div(
                                 P(f"ℹ️ {len(user_settings['available_models'])} models loaded from session",
                                   style="color: #28a745; font-size: 0.9em; margin: 0;")
                                 if user_settings['available_models']
                                 else P("Click 'Fetch Available Models' to populate the dropdown",
                                       style="color: #6c757d; font-size: 0.9em; margin: 0;"),
-                                id="model-status",
-                                style="margin-top: 10px;"
+                                id="model-status"
                             ),
                             style="margin-bottom: 20px;"
                         ),
@@ -249,8 +249,10 @@ def setup_routes(app, rt):
                         # Save button
                         Button(
                             "💾 Save Settings",
-                            type="button",
-                            onclick="saveSettings()",
+                            hx_post="/save-settings",
+                            hx_include="#api-key-input, #model-select",
+                            hx_target="#save-status",
+                            cls="button",
                             style="background-color: #28a745; padding: 12px 24px; font-size: 1em;"
                         ),
 
@@ -263,85 +265,107 @@ def setup_routes(app, rt):
                     style="max-width: 800px;"
                 ),
 
-                # JavaScript for handling API calls
-                Script("""
-                    async function fetchModels() {
-                        const btn = document.getElementById('fetch-models-btn');
-                        const statusDiv = document.getElementById('model-status');
-                        const modelSelect = document.getElementById('model-select');
-
-                        btn.disabled = true;
-                        btn.textContent = '⏳ Fetching models...';
-                        statusDiv.innerHTML = '<p style="color: #17a2b8;">Fetching models from Gemini API...</p>';
-
-                        try {
-                            const response = await fetch('/api/models/list');
-                            const data = await response.json();
-
-                            if (data.error) {
-                                statusDiv.innerHTML = `<p style="color: #dc3545;">❌ Error: ${data.error}</p>`;
-                            } else {
-                                // Clear existing options
-                                modelSelect.innerHTML = '';
-
-                                // Add models to dropdown
-                                data.models.forEach(model => {
-                                    const option = document.createElement('option');
-                                    option.value = model.name;
-                                    option.textContent = `${model.display_name} (${model.name})`;
-                                    modelSelect.appendChild(option);
-                                });
-
-                                statusDiv.innerHTML = `<p style="color: #28a745;">✅ Found ${data.count} models</p>`;
-                            }
-                        } catch (error) {
-                            statusDiv.innerHTML = `<p style="color: #dc3545;">❌ Error: ${error.message}</p>`;
-                        } finally {
-                            btn.disabled = false;
-                            btn.textContent = '🔄 Fetch Available Models';
-                        }
-                    }
-
-                    async function saveSettings() {
-                        const statusDiv = document.getElementById('save-status');
-                        const apiKeyInput = document.getElementById('api-key-input');
-                        const modelSelect = document.getElementById('model-select');
-
-                        statusDiv.innerHTML = '<p style="color: #17a2b8;">💾 Saving settings...</p>';
-
-                        try {
-                            // Only include API key if it's not the masked value
-                            const apiKey = apiKeyInput.value === '••••••••' ? null : apiKeyInput.value;
-
-                            const response = await fetch('/api/settings', {
-                                method: 'POST',
-                                headers: {
-                                    'Content-Type': 'application/json',
-                                },
-                                body: JSON.stringify({
-                                    gemini_api_key: apiKey,
-                                    ocr_model: modelSelect.value
-                                })
-                            });
-
-                            const data = await response.json();
-
-                            if (data.error) {
-                                statusDiv.innerHTML = `<p style="color: #dc3545;">❌ Error: ${data.error}</p>`;
-                            } else {
-                                statusDiv.innerHTML = `<p style="color: #28a745;">✅ ${data.message}</p>`;
-
-                                // Reload page after 1 second to show updated status
-                                setTimeout(() => {
-                                    window.location.reload();
-                                }, 1000);
-                            }
-                        } catch (error) {
-                            statusDiv.innerHTML = `<p style="color: #dc3545;">❌ Error: ${error.message}</p>`;
-                        }
-                    }
-                """),
-
                 cls="container"
             )
         )
+
+
+    @rt('/fetch-models', methods=['POST'])
+    async def fetch_models(session):
+        """Fetch available Gemini models and update the dropdown."""
+        try:
+            # Get API key from session or environment
+            user_settings = get_session_settings(session)
+            api_key = user_settings['gemini_api_key'] or os.getenv('GOOGLE_API_KEY') or os.getenv('GEMINI_API_KEY')
+
+            if not api_key:
+                return Div(
+                    P("❌ Error: No API key configured. Please set an API key first.",
+                      style="color: #dc3545; font-size: 0.9em; margin: 0;")
+                )
+
+            # Initialize client with user's API key
+            client = genai.Client(api_key=api_key)
+
+            # Fetch models
+            models_list = []
+            models = client.models.list()
+
+            # Iterate directly over the Pager object
+            for model in models:
+                # Only include models that support generateContent
+                if "generateContent" in model.supported_actions:
+                    models_list.append({
+                        "name": model.name,
+                        "display_name": model.display_name,
+                        "description": model.description or "",
+                        "input_token_limit": model.input_token_limit,
+                        "output_token_limit": model.output_token_limit
+                    })
+
+            # Save models to session
+            save_available_models(session, models_list)
+
+            # Get current selected model
+            current_model = user_settings['ocr_model']
+
+            # Return updated dropdown HTML with success indicator
+            return Div(
+                Select(
+                    *[Option(
+                        f"{model['display_name']} ({model['name']})",
+                        value=model['name'],
+                        selected=(model['name'] == current_model)
+                    ) for model in models_list],
+                    id="model-select",
+                    name="ocr_model",
+                    style="width: 100%; padding: 10px; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 4px;"
+                ),
+                P(f"✅ Found {len(models_list)} models",
+                  style="color: #28a745; font-size: 0.9em; margin-top: 5px;",
+                  hx_swap_oob="true",
+                  id="model-status")
+            )
+
+        except Exception as e:
+            return Div(
+                Select(
+                    Option(user_settings['ocr_model'], value=user_settings['ocr_model'], selected=True),
+                    id="model-select",
+                    name="ocr_model",
+                    style="width: 100%; padding: 10px; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 4px;"
+                ),
+                P(f"❌ Error: {str(e)}",
+                  style="color: #dc3545; font-size: 0.9em; margin-top: 5px;",
+                  hx_swap_oob="true",
+                  id="model-status")
+            )
+
+
+    @rt('/save-settings', methods=['POST'])
+    async def save_settings_route(request: Request, session):
+        """Save settings to session."""
+        try:
+            form = await request.form()
+
+            # Get values from form
+            api_key = form.get('gemini_api_key', '').strip()
+            ocr_model = form.get('ocr_model', '').strip()
+
+            # Handle masked API key (don't update if still masked)
+            if api_key == '••••••••':
+                api_key = None
+
+            # Update session settings
+            update_session_settings(
+                session,
+                gemini_api_key=api_key,
+                ocr_model=ocr_model if ocr_model else None
+            )
+
+            return P("✅ Settings saved for this session",
+                    style="color: #28a745; font-weight: bold;")
+
+        except Exception as e:
+            return P(f"❌ Error: {str(e)}",
+                    style="color: #dc3545; font-weight: bold;")
