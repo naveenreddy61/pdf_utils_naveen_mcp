@@ -32,7 +32,7 @@ MAX_IMAGES_PER_PAGE = 12  # Maximum images to extract per page
 IMAGE_PREVIEW_SIZE = 300  # Thumbnail display size in pixels
 
 # OCR with LLM settings
-OCR_MODEL = "gemini-2.5-flash-lite"  # Direct GenAI model
+OCR_MODEL = "gemini-flash-lite-latest"  # Direct GenAI model
 OCR_TEMPERATURE = 0.1
 OCR_TIMEOUT = 60
 OCR_MAX_TOKENS = 4096
