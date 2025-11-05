@@ -527,5 +527,152 @@ async def process_document_async(
     }
 
 
+async def ocr_image_file(
+    image_path: Path,
+    progress_callback: Optional[Callable[[str], None]] = None
+) -> Dict:
+    """
+    Perform OCR on a standalone image file using Google GenAI.
+
+    This is simpler than PDF OCR since:
+    - No page extraction needed
+    - Single image = single API call
+    - Can directly send image bytes
+
+    Args:
+        image_path: Path to image file
+        progress_callback: Optional callback for progress updates
+
+    Returns:
+        Dictionary with processing results and statistics
+    """
+    # Initialize cache database
+    await init_cache_database()
+
+    start_time = time.time()
+    image_filename = image_path.name
+
+    if progress_callback:
+        progress_callback(f"Processing image: {image_filename}")
+
+    try:
+        # Read image file
+        with open(image_path, 'rb') as f:
+            image_bytes = f.read()
+
+        # Create cache key based on image hash
+        cache_key = compute_content_hash(image_bytes)
+
+        # Check cache first
+        cached_result = await get_cached_ocr(cache_key)
+
+        if cached_result:
+            text, input_tokens, output_tokens = cached_result
+            processing_time = time.time() - start_time
+
+            if progress_callback:
+                progress_callback(f"✅ Complete: Retrieved from cache")
+
+            return {
+                "full_text": text,
+                "total_input_tokens": input_tokens,
+                "total_output_tokens": output_tokens,
+                "method": "cached",
+                "processing_time": processing_time,
+                "cached": True,
+                "summary": f"Retrieved from cache ({input_tokens + output_tokens:,} tokens saved)"
+            }
+
+        # Load OCR prompt
+        prompt = load_ocr_prompt()
+
+        # Determine MIME type based on file extension
+        ext = image_path.suffix.lower()
+        mime_types = {
+            '.jpg': 'image/jpeg',
+            '.jpeg': 'image/jpeg',
+            '.png': 'image/png',
+            '.webp': 'image/webp'
+        }
+        mime_type = mime_types.get(ext, 'image/jpeg')
+
+        # Create a Part object with the image data
+        image_part = types.Part(
+            inline_data=types.Blob(mime_type=mime_type, data=image_bytes)
+        )
+
+        contents = [prompt, image_part]
+
+        if progress_callback:
+            progress_callback(f"Sending image to LLM for OCR...")
+
+        # Make the async API call
+        response = await asyncio.wait_for(
+            client.aio.models.generate_content(
+                model=OCR_MODEL,
+                contents=contents,
+                config=types.GenerateContentConfig(
+                    temperature=OCR_TEMPERATURE,
+                    max_output_tokens=OCR_MAX_TOKENS
+                )
+            ),
+            timeout=OCR_TIMEOUT
+        )
+
+        # Extract response
+        extracted_text = response.text
+
+        # Get token usage from GenAI response
+        usage = response.usage_metadata
+        input_tokens = usage.prompt_token_count if usage else 0
+        output_tokens = usage.candidates_token_count if usage else 0
+
+        # Save to cache
+        await save_ocr_to_cache(
+            cache_key,
+            extracted_text,
+            input_tokens,
+            output_tokens,
+            image_filename,
+            1  # Page 1 for images
+        )
+
+        processing_time = time.time() - start_time
+
+        # Clean old cache entries in background
+        asyncio.create_task(clean_old_cache_entries())
+
+        if progress_callback:
+            progress_callback(f"✅ Complete: Used {input_tokens:,} input + {output_tokens:,} output tokens")
+
+        return {
+            "full_text": extracted_text,
+            "total_input_tokens": input_tokens,
+            "total_output_tokens": output_tokens,
+            "method": "llm",
+            "processing_time": processing_time,
+            "cached": False,
+            "summary": f"Used {input_tokens:,} input + {output_tokens:,} output tokens"
+        }
+
+    except Exception as e:
+        processing_time = time.time() - start_time
+        error_msg = f"Error processing image: {str(e)}"
+
+        if progress_callback:
+            progress_callback(f"❌ Error: {error_msg}")
+
+        return {
+            "full_text": f"[{error_msg}]",
+            "total_input_tokens": 0,
+            "total_output_tokens": 0,
+            "method": "failed",
+            "processing_time": processing_time,
+            "cached": False,
+            "error": str(e),
+            "summary": f"Failed to process image: {str(e)}"
+        }
+
+
 # Backward compatibility alias
 process_pages_async_batch = process_document_async

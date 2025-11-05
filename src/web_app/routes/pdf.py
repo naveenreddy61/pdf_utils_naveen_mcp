@@ -566,3 +566,169 @@ def setup_routes(app, rt):
             import traceback
             traceback.print_exc()
             return Div(error_message(f"Error extracting text with LLM: {str(e)}"))
+
+
+    @rt('/extract-text-llm-image/{file_hash}')
+    def extract_text_llm_image_form(file_hash: str):
+        """Show form/confirmation for image OCR (no page selection needed)."""
+        file_info = get_file_info(file_hash)
+        if not file_info:
+            return Div(error_message("File not found."))
+
+        return Div(
+            H3("Extract Text from Image with LLM OCR"),
+            P(f"File: {file_info.original_filename}"),
+            P(f"Size: {file_info.file_size / 1024 / 1024:.2f} MB"),
+            P("This feature uses AI to extract text from your image, including handwritten text and mathematical notation.",
+              style="color: #666; font-size: 0.9em; margin: 10px 0;"),
+            Button("Extract Text",
+                   hx_post=f"/process/extract-text-llm-image/{file_hash}",
+                   hx_target="#operation-result",
+                   hx_indicator="#ocr-spinner",
+                   cls="button",
+                   style="background-color: #6610f2;"),
+            Div(id="ocr-spinner", cls="spinner", style="display: none;"),
+            cls="result-area"
+        )
+
+
+    @rt('/process/extract-text-llm-image/{file_hash}')
+    async def process_extract_text_llm_image(file_hash: str):
+        """Extract text from image using LLM OCR with caching."""
+        try:
+            file_info = get_file_info(file_hash)
+            if not file_info:
+                return Div(error_message("File not found."))
+
+            # Verify it's an image file
+            if file_info.file_type != 'image':
+                return Div(error_message("This operation is only available for image files."))
+
+            file_path = UPLOAD_DIR / file_info.stored_filename
+
+            # Store progress messages
+            progress_messages = []
+
+            def progress_callback(message: str):
+                progress_messages.append(message)
+                print(f"Image OCR Progress: {message}")
+
+            # Process image with OCR
+            print(f"Starting LLM OCR extraction for image: {file_path}")
+            results = await ocr_service.ocr_image_file(
+                file_path,
+                progress_callback=progress_callback
+            )
+
+            # Save text to file for download
+            cache_info = "_cached" if results.get('cached', False) else ""
+            text_filename = f"mcp_{file_info.stored_filename.rsplit('.', 1)[0]}_ocr{cache_info}.txt"
+            text_path = UPLOAD_DIR / text_filename
+            text_path.write_text(results["full_text"], encoding='utf-8')
+
+            # Calculate token count for display
+            try:
+                token_count = await count_tokens(results["full_text"])
+            except Exception as e:
+                print(f"Error counting tokens: {e}")
+                token_count = 0
+
+            # Create simplified display for image OCR
+            processing_time = results.get("processing_time", 0)
+            method = results.get("method", "unknown")
+            cached = results.get("cached", False)
+
+            # Generate unique ID for the preview content
+            preview_id = f"image-ocr-preview-{file_hash}"
+
+            # Determine display icon and color based on method
+            if cached:
+                method_icon = "💾"
+                method_text = "Retrieved from cache"
+                method_color = "#17a2b8"
+            else:
+                method_icon = "🤖"
+                method_text = "Processed with LLM OCR"
+                method_color = "#28a745"
+
+            return Div(
+                H3("✨ Image OCR Complete"),
+
+                # Summary section
+                Div(
+                    P(results.get("summary", "Text extraction complete"),
+                      style="font-weight: bold; color: #155724; margin-bottom: 10px;"),
+                    Div(
+                        f"{method_icon} {method_text} | " +
+                        f"⚡ Processed in {processing_time:.1f}s",
+                        style="font-size: 0.9em; color: #6c757d;"
+                    ),
+                    cls="alert",
+                    style="background-color: #d4edda; border: 1px solid #c3e6cb; padding: 15px; border-radius: 4px; margin-bottom: 15px;"
+                ),
+
+                # Metrics section
+                Div(
+                    H4("Extraction Details", style="margin-bottom: 10px;"),
+                    Div(
+                        Div(
+                            Div("📊 Statistics", style="font-weight: bold; margin-bottom: 5px;"),
+                            P(f"Characters extracted: {len(results['full_text']):,}", style="margin: 2px 0;"),
+                            P(f"Token count: ~{token_count:,} tokens", style="margin: 2px 0;"),
+                            style="flex: 1; margin-right: 15px;"
+                        ),
+                        Div(
+                            Div("🪙 Token Usage", style="font-weight: bold; margin-bottom: 5px;"),
+                            P(f"Input tokens: {results['total_input_tokens']:,}", style="margin: 2px 0;"),
+                            P(f"Output tokens: {results['total_output_tokens']:,}", style="margin: 2px 0;"),
+                            P(f"Total: {results['total_input_tokens'] + results['total_output_tokens']:,}",
+                              style="margin: 2px 0; font-weight: bold;"),
+                            style="flex: 1;"
+                        ),
+                        style="display: flex; align-items: flex-start;"
+                    ),
+                    cls="metrics",
+                    style="background-color: #f8f9fa; padding: 15px; border-radius: 4px; margin-bottom: 15px;"
+                ),
+
+                # Action buttons
+                Div(
+                    A("📥 Download Text",
+                      href=f"/{text_filename}",
+                      download=text_filename,
+                      cls="button",
+                      style="margin-right: 10px; background-color: #28a745;"),
+                    Button("📋 Copy to Clipboard",
+                           onclick=f"""
+                               const text = document.getElementById('{preview_id}').textContent;
+                               navigator.clipboard.writeText(text).then(() => {{
+                                   this.textContent = '✅ Copied!';
+                                   this.style.backgroundColor = '#28a745';
+                                   setTimeout(() => {{
+                                       this.textContent = '📋 Copy to Clipboard';
+                                       this.style.backgroundColor = '#007bff';
+                                   }}, 2000);
+                               }}).catch(err => {{
+                                   console.error('Failed to copy: ', err);
+                                   this.textContent = '❌ Copy failed';
+                                   this.style.backgroundColor = '#dc3545';
+                               }});
+                           """,
+                           cls="button"),
+                    style="display: flex; align-items: center; margin: 1rem 0;"
+                ),
+
+                # Text preview
+                H4("📖 Extracted Text:"),
+                Pre(results["full_text"],
+                    id=preview_id,
+                    style="white-space: pre-wrap; word-wrap: break-word; max-height: 400px; overflow-y: auto; background-color: #f8f9fa; padding: 15px; border-radius: 4px; border-left: 4px solid #007bff;"),
+
+                cls="result-area"
+            )
+
+        except Exception as e:
+            print(f"Error in image LLM OCR extraction: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return Div(error_message(f"Error extracting text from image: {str(e)}"))

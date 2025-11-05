@@ -15,7 +15,7 @@ DB_PATH = Path("data/pdf_files.db")
 SERVER_PORT = 8000
 
 # Allowed file extensions
-ALLOWED_EXTENSIONS = {'.pdf'}
+ALLOWED_EXTENSIONS = {'.pdf', '.jpg', '.jpeg', '.png', '.webp'}
 
 # Image conversion settings
 DEFAULT_DPI = 150

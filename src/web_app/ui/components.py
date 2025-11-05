@@ -7,8 +7,8 @@ from config import MAX_FILE_SIZE_MB
 def upload_form():
     """Return the upload form component."""
     return Form(
-        Input(type="file", name="pdf_file", accept=".pdf", 
-              onchange="this.form.submit()", 
+        Input(type="file", name="pdf_file", accept=".pdf,.jpg,.jpeg,.png,.webp",
+              onchange="this.form.submit()",
               style="margin-bottom: 1rem;"),
         method="post",
         action="/upload",
@@ -18,11 +18,12 @@ def upload_form():
 
 def page_with_result(result_content):
     """Return a full page with upload form and result content."""
-    return Titled("PDF Utilities",
+    return Titled("PDF & Image Utilities",
         Div(
-            H2("PDF Processing Tools"),
-            P("Upload a PDF file to use various processing tools. Files are kept for 30 days."),
+            H2("PDF & Image Processing Tools"),
+            P("Upload a PDF or image file to use various processing tools. Files are kept for 30 days."),
             P(f"Maximum file size: {MAX_FILE_SIZE_MB}MB"),
+            P("Supported formats: PDF, JPG, JPEG, PNG, WEBP", style="color: #666; font-style: italic;"),
             upload_form(),
             result_content,
             cls="container"
@@ -32,63 +33,90 @@ def page_with_result(result_content):
 
 def file_info_display(file_info, is_existing=False):
     """Display file information."""
-    return Div(
+    file_type_display = "PDF Document" if file_info.file_type == 'pdf' else "Image File"
+
+    info_items = [
         H3("File Information"),
+        P(f"Type: {file_type_display}"),
         P(f"Original name: {file_info.original_filename}"),
         P(f"Size: {file_info.file_size / 1024 / 1024:.2f} MB"),
-        P(f"Pages: {file_info.page_count}"),
-        P("File uploaded successfully!" if not is_existing else "File already exists, using cached version.", 
-          cls="success" if not is_existing else "warning"),
-        cls="file-info"
+    ]
+
+    # Only show pages for PDFs
+    if file_info.file_type == 'pdf':
+        info_items.append(P(f"Pages: {file_info.page_count}"))
+
+    info_items.append(
+        P("File uploaded successfully!" if not is_existing else "File already exists, using cached version.",
+          cls="success" if not is_existing else "warning")
     )
 
+    return Div(*info_items, cls="file-info")
 
-def operation_buttons(file_hash):
-    """Display operation buttons."""
-    return Div(
-        H3("Available Operations"),
-        # First row of buttons
-        Div(
-            Button("Extract Table of Contents", 
-                   hx_post=f"/process/toc/{file_hash}",
-                   hx_target="#operation-result",
-                   cls="button"),
-            
-            Button("Extract Pages", 
-                   hx_get=f"/extract-pages-form/{file_hash}",
-                   hx_target="#operation-result",
-                   cls="button"),
-            
-            Button("Convert to Images", 
-                   hx_get=f"/convert-images-form/{file_hash}",
-                   hx_target="#operation-result",
-                   cls="button"),
-            
-            Button("Extract Text", 
-                   hx_get=f"/extract-text-form/{file_hash}",
-                   hx_target="#operation-result",
-                   cls="button"),
-            
-            cls="operation-buttons"
-        ),
-        # Second row with Extract Images button
-        Div(
-            Button("Extract Images", 
-                   hx_get=f"/extract-images-form/{file_hash}",
-                   hx_target="#operation-result",
-                   cls="button",
-                   style="background-color: #28a745;"),
-            
-            Button("Extract Text LLM OCR", 
-                   hx_get=f"/extract-text-llm-form/{file_hash}",
-                   hx_target="#operation-result",
-                   cls="button",
-                   style="background-color: #6610f2;"),
-            
-            cls="operation-buttons",
-            style="margin-top: 10px;"
+
+def operation_buttons(file_hash, file_type='pdf'):
+    """Display operation buttons based on file type."""
+    if file_type == 'image':
+        # Only show OCR for images
+        return Div(
+            H3("Available Operations"),
+            P("Image files support OCR text extraction only.",
+              style="color: #666; font-style: italic; margin-bottom: 15px;"),
+            Div(
+                Button("Extract Text LLM OCR",
+                       hx_get=f"/extract-text-llm-image/{file_hash}",
+                       hx_target="#operation-result",
+                       cls="button",
+                       style="background-color: #6610f2;"),
+                cls="operation-buttons"
+            )
         )
-    )
+    else:
+        # Show all PDF operations
+        return Div(
+            H3("Available Operations"),
+            # First row of buttons
+            Div(
+                Button("Extract Table of Contents",
+                       hx_post=f"/process/toc/{file_hash}",
+                       hx_target="#operation-result",
+                       cls="button"),
+
+                Button("Extract Pages",
+                       hx_get=f"/extract-pages-form/{file_hash}",
+                       hx_target="#operation-result",
+                       cls="button"),
+
+                Button("Convert to Images",
+                       hx_get=f"/convert-images-form/{file_hash}",
+                       hx_target="#operation-result",
+                       cls="button"),
+
+                Button("Extract Text",
+                       hx_get=f"/extract-text-form/{file_hash}",
+                       hx_target="#operation-result",
+                       cls="button"),
+
+                cls="operation-buttons"
+            ),
+            # Second row with Extract Images button
+            Div(
+                Button("Extract Images",
+                       hx_get=f"/extract-images-form/{file_hash}",
+                       hx_target="#operation-result",
+                       cls="button",
+                       style="background-color: #28a745;"),
+
+                Button("Extract Text LLM OCR",
+                       hx_get=f"/extract-text-llm-form/{file_hash}",
+                       hx_target="#operation-result",
+                       cls="button",
+                       style="background-color: #6610f2;"),
+
+                cls="operation-buttons",
+                style="margin-top: 10px;"
+            )
+        )
 
 
 def toc_display(toc):

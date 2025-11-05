@@ -14,6 +14,7 @@ class FileRecord:
     stored_filename: str
     file_size: int
     page_count: int
+    file_type: str  # 'pdf' or 'image'
     upload_date: str
     last_accessed: str
 
