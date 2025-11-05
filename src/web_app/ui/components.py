@@ -16,8 +16,12 @@ def upload_form():
     )
 
 
-def page_with_result(result_content):
+def page_with_result(result_content, current_model=None):
     """Return a full page with upload form and result content."""
+    from config import OCR_MODEL
+    if current_model is None:
+        current_model = OCR_MODEL
+
     return Titled("PDF Utilities",
         Div(
             # Header with settings button
@@ -31,6 +35,15 @@ def page_with_result(result_content):
             ),
             P("Upload a PDF file to use various processing tools. Files are kept for 30 days."),
             P(f"Maximum file size: {MAX_FILE_SIZE_MB}MB"),
+
+            # Show current OCR model
+            Div(
+                P(f"🤖 Current OCR Model: ",
+                  Strong(current_model),
+                  style="margin: 10px 0; padding: 10px; background-color: #e7f3ff; border-left: 4px solid #2196F3; border-radius: 4px;"),
+                style="margin-bottom: 1rem;"
+            ),
+
             upload_form(),
             result_content,
             cls="container"

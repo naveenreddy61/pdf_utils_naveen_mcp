@@ -22,8 +22,11 @@ def setup_routes(app, rt):
     """Set up main routes for the application."""
     
     @rt('/')
-    def index():
+    def index(session):
         """Main page with file upload form."""
+        user_settings = get_session_settings(session)
+        current_model = user_settings['ocr_model']
+
         return Titled("PDF Utilities",
             Div(
                 # Header with settings button
@@ -38,6 +41,14 @@ def setup_routes(app, rt):
                 P("Upload a PDF file to use various processing tools. Files are kept for 30 days."),
                 P(f"Maximum file size: {MAX_FILE_SIZE_MB}MB"),
 
+                # Show current OCR model
+                Div(
+                    P(f"🤖 Current OCR Model: ",
+                      Strong(current_model),
+                      style="margin: 10px 0; padding: 10px; background-color: #e7f3ff; border-left: 4px solid #2196F3; border-radius: 4px;"),
+                    style="margin-bottom: 1rem;"
+                ),
+
                 upload_form(),
 
                 Div(id="upload-result"),
@@ -48,44 +59,52 @@ def setup_routes(app, rt):
     
     
     @rt('/upload', methods=['POST'])
-    async def upload(request: Request):
+    async def upload(request: Request, session):
         """Handle file upload with deduplication."""
+        # Get current model from session for display
+        user_settings = get_session_settings(session)
+        current_model = user_settings['ocr_model']
+
         try:
             # Get form data
             form = await request.form()
             pdf_file = form.get('pdf_file')
-            
+
             # Debug logging
             print(f"Form keys: {list(form.keys())}")
             print(f"pdf_file type: {type(pdf_file)}")
-            
+
             # Check if file was uploaded
             if not pdf_file:
                 return page_with_result(
-                    error_message("Error: No file was uploaded.")
+                    error_message("Error: No file was uploaded."),
+                    current_model
                 )
-            
+
             # Check if it's a valid file upload
             if not hasattr(pdf_file, 'filename'):
                 return page_with_result(
-                    error_message(f"Error: Invalid file upload. Received type: {type(pdf_file)}")
+                    error_message(f"Error: Invalid file upload. Received type: {type(pdf_file)}"),
+                    current_model
                 )
-            
+
             # Check file extension
             if not pdf_file.filename.lower().endswith('.pdf'):
                 return page_with_result(
-                    error_message("Error: Only PDF files are allowed.")
+                    error_message("Error: Only PDF files are allowed."),
+                    current_model
                 )
-            
+
             # Read file content
             print(f"Reading file: {pdf_file.filename}")
             content = await pdf_file.read()
             print(f"File size: {len(content)} bytes")
-            
+
             # Check file size
             if len(content) > MAX_FILE_SIZE_BYTES:
                 return page_with_result(
-                    error_message(f"Error: File size exceeds {MAX_FILE_SIZE_MB}MB limit.")
+                    error_message(f"Error: File size exceeds {MAX_FILE_SIZE_MB}MB limit."),
+                    current_model
                 )
             
             # Calculate hash
@@ -131,15 +150,17 @@ def setup_routes(app, rt):
                     file_info_display(file_info, is_existing),
                     operation_buttons(file_hash),
                     Div(id="operation-result")
-                )
+                ),
+                current_model
             )
-            
+
         except Exception as e:
             print(f"Upload error: {str(e)}")
             import traceback
             traceback.print_exc()
             return page_with_result(
-                error_message(f"Error uploading file: {str(e)}")
+                error_message(f"Error uploading file: {str(e)}"),
+                current_model
             )
 
 
@@ -273,10 +294,13 @@ def setup_routes(app, rt):
     @rt('/fetch-models', methods=['POST'])
     async def fetch_models(session):
         """Fetch available Gemini models and update the dropdown."""
+        print(f"[DEBUG] /fetch-models endpoint called")
         try:
             # Get API key from session or environment
             user_settings = get_session_settings(session)
             api_key = user_settings['gemini_api_key'] or os.getenv('GOOGLE_API_KEY') or os.getenv('GEMINI_API_KEY')
+
+            print(f"[DEBUG] API key present: {bool(api_key)}")
 
             if not api_key:
                 return Div(
@@ -286,6 +310,7 @@ def setup_routes(app, rt):
 
             # Initialize client with user's API key
             client = genai.Client(api_key=api_key)
+            print(f"[DEBUG] Gemini client initialized")
 
             # Fetch models
             models_list = []
@@ -302,6 +327,8 @@ def setup_routes(app, rt):
                         "input_token_limit": model.input_token_limit,
                         "output_token_limit": model.output_token_limit
                     })
+
+            print(f"[DEBUG] Fetched {len(models_list)} models from Gemini API")
 
             # Save models to session
             save_available_models(session, models_list)

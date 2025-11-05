@@ -14,11 +14,20 @@ def get_session_settings(session: dict) -> dict:
     Returns:
         dict with gemini_api_key, ocr_model, and available_models
     """
-    return {
+    settings = {
         'gemini_api_key': session.get('gemini_api_key', ''),
         'ocr_model': session.get('ocr_model', OCR_MODEL),
         'available_models': session.get('available_models', [])
     }
+
+    # Debug logging
+    print(f"[DEBUG] get_session_settings called")
+    print(f"[DEBUG] Session keys: {list(session.keys())}")
+    print(f"[DEBUG] gemini_api_key present: {bool(settings['gemini_api_key'])}")
+    print(f"[DEBUG] ocr_model: {settings['ocr_model']}")
+    print(f"[DEBUG] available_models count: {len(settings['available_models'])}")
+
+    return settings
 
 
 def update_session_settings(session: dict, gemini_api_key: Optional[str] = None, ocr_model: Optional[str] = None) -> dict:
@@ -33,11 +42,17 @@ def update_session_settings(session: dict, gemini_api_key: Optional[str] = None,
     Returns:
         Updated settings dict
     """
+    print(f"[DEBUG] update_session_settings called")
+    print(f"[DEBUG] Updating API key: {gemini_api_key is not None}")
+    print(f"[DEBUG] Updating model: {ocr_model}")
+
     if gemini_api_key is not None:
         session['gemini_api_key'] = gemini_api_key
+        print(f"[DEBUG] Set gemini_api_key in session")
 
     if ocr_model is not None:
         session['ocr_model'] = ocr_model
+        print(f"[DEBUG] Set ocr_model to: {ocr_model}")
 
     return get_session_settings(session)
 
@@ -50,7 +65,10 @@ def save_available_models(session: dict, models: List[Dict]) -> None:
         session: FastHTML session dict
         models: List of model dictionaries
     """
+    print(f"[DEBUG] save_available_models called with {len(models)} models")
     session['available_models'] = models
+    print(f"[DEBUG] Saved available_models to session")
+    print(f"[DEBUG] Session now has keys: {list(session.keys())}")
 
 
 def clear_session_settings(session: dict):
