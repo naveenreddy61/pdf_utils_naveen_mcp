@@ -338,6 +338,15 @@ def setup_routes(app, rt):
             # Save models to session
             save_available_models(session, models_list)
 
+            # Force session to be marked as modified
+            if hasattr(session, 'modified'):
+                session.modified = True
+                print(f"[DEBUG] Forced session.modified = True in fetch-models")
+
+            # Verify it was saved
+            print(f"[DEBUG] Verifying save: 'available_models' in session = {'available_models' in session}")
+            print(f"[DEBUG] Verifying save: len(session.get('available_models', [])) = {len(session.get('available_models', []))}")
+
             # Get current selected model
             current_model = user_settings['ocr_model']
 
@@ -406,10 +415,15 @@ def setup_routes(app, rt):
                 ocr_model=ocr_model if ocr_model else None
             )
 
-            # Restore available_models if it was lost
-            if preserved_models and 'available_models' not in session:
-                print(f"[DEBUG] Restoring available_models to session")
+            # Always restore available_models to ensure they persist
+            if preserved_models:
+                print(f"[DEBUG] Restoring {len(preserved_models)} available_models to session")
                 session['available_models'] = preserved_models
+                # Force session modification
+                if hasattr(session, 'modified'):
+                    session.modified = True
+            else:
+                print(f"[DEBUG] No models to restore")
 
             print(f"[DEBUG] Session AFTER update: {list(session.keys())}")
             print(f"[DEBUG] available_models count after: {len(session.get('available_models', []))}")

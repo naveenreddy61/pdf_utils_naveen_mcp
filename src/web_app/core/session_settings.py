@@ -54,6 +54,11 @@ def update_session_settings(session: dict, gemini_api_key: Optional[str] = None,
         session['ocr_model'] = ocr_model
         print(f"[DEBUG] Set ocr_model to: {ocr_model}")
 
+    # Force session modification flag for Starlette
+    if hasattr(session, 'modified'):
+        session.modified = True
+        print(f"[DEBUG] Session modified flag set")
+
     return get_session_settings(session)
 
 
@@ -67,7 +72,14 @@ def save_available_models(session: dict, models: List[Dict]) -> None:
     """
     print(f"[DEBUG] save_available_models called with {len(models)} models")
     session['available_models'] = models
+
+    # Force session modification flag for Starlette
+    # This ensures the session is saved after the request
+    if hasattr(session, 'modified'):
+        session.modified = True
+
     print(f"[DEBUG] Saved available_models to session")
+    print(f"[DEBUG] Session modified flag set: {getattr(session, 'modified', False)}")
     print(f"[DEBUG] Session now has keys: {list(session.keys())}")
 
 
