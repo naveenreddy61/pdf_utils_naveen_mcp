@@ -167,8 +167,13 @@ def setup_routes(app, rt):
     @rt('/settings')
     def settings_page(session):
         """Settings page for configuring Gemini API and models (session-based)."""
+        print(f"[DEBUG] /settings page loaded")
+        print(f"[DEBUG] Session keys on settings page: {list(session.keys())}")
+
         user_settings = get_session_settings(session)
         has_env_key = bool(os.getenv('GOOGLE_API_KEY') or os.getenv('GEMINI_API_KEY'))
+
+        print(f"[DEBUG] Settings page - available_models count: {len(user_settings['available_models'])}")
 
         return Titled("Settings - PDF Utilities",
             Div(
@@ -372,12 +377,23 @@ def setup_routes(app, rt):
     @rt('/save-settings', methods=['POST'])
     async def save_settings_route(request: Request, session):
         """Save settings to session."""
+        print(f"[DEBUG] /save-settings endpoint called")
+        print(f"[DEBUG] Session BEFORE update: {list(session.keys())}")
+        print(f"[DEBUG] available_models in session: {'available_models' in session}")
+
         try:
             form = await request.form()
 
             # Get values from form
             api_key = form.get('gemini_api_key', '').strip()
             ocr_model = form.get('ocr_model', '').strip()
+
+            print(f"[DEBUG] Form api_key: '{api_key}'")
+            print(f"[DEBUG] Form ocr_model: '{ocr_model}'")
+
+            # Preserve available_models before update
+            preserved_models = session.get('available_models', [])
+            print(f"[DEBUG] Preserving {len(preserved_models)} models")
 
             # Handle masked API key (don't update if still masked)
             if api_key == '••••••••':
@@ -390,9 +406,18 @@ def setup_routes(app, rt):
                 ocr_model=ocr_model if ocr_model else None
             )
 
+            # Restore available_models if it was lost
+            if preserved_models and 'available_models' not in session:
+                print(f"[DEBUG] Restoring available_models to session")
+                session['available_models'] = preserved_models
+
+            print(f"[DEBUG] Session AFTER update: {list(session.keys())}")
+            print(f"[DEBUG] available_models count after: {len(session.get('available_models', []))}")
+
             return P("✅ Settings saved for this session",
                     style="color: #28a745; font-weight: bold;")
 
         except Exception as e:
+            print(f"[DEBUG] Error in save-settings: {str(e)}")
             return P(f"❌ Error: {str(e)}",
                     style="color: #dc3545; font-weight: bold;")
