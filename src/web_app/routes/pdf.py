@@ -346,12 +346,12 @@ def setup_routes(app, rt):
                 text_content = pdf_service.extract_text_markdown(file_path, start_page, end_page)
             else:
                 text_content = pdf_service.extract_text_plain(file_path, start_page, end_page)
-            
-            # Calculate token count
-            token_count = count_tokens(text_content)
-            
+
+            # Calculate token count (runs in background thread to avoid blocking)
+            token_count = await count_tokens(text_content)
+
             # Return the token count as a styled paragraph
-            return P(f"Total tokens: {token_count} (using gpt-4o encoding)", 
+            return P(f"Total tokens: {token_count} (using gpt-4o encoding)",
                     style="margin: 10px 0; color: #155724; font-weight: bold;")
             
         except Exception as e:

@@ -155,6 +155,18 @@ output_tokens = usage.candidates_token_count if usage else 0
 
 ## Async Development Patterns
 
+### CPU-Bound Operations (Token Counting, Heavy Processing)
+For CPU-bound synchronous operations that would block the event loop:
+- **Pattern**: Use `asyncio.to_thread()` to run blocking operations in thread pool
+- **Example**: Token counting with tiktoken (`src/web_app/core/utils.py:31`)
+  ```python
+  async def count_tokens(text: str) -> int:
+      """Non-blocking token counting."""
+      return await asyncio.to_thread(_count_tokens_sync, text)
+  ```
+- **Benefits**: Prevents blocking other concurrent requests (downloads, uploads, etc.)
+- **Use cases**: tiktoken encoding, heavy CPU processing, synchronous library calls
+
 ### Testing Framework
 
 #### Test Organization:
