@@ -543,7 +543,11 @@ def setup_routes(app, rt):
             results["progress_messages"] = progress_messages
             
             # Save text to file for download
-            cache_info = f"_cache{results['cache_hit_rate']:.0f}pct" if results.get('cache_hit_rate', 0) > 0 else ""
+            # Calculate cache hit rate for filename
+            pages_processed = results.get('pages_processed', 0)
+            cached_pages_count = len(results.get('cached_pages', []))
+            cache_hit_rate = (cached_pages_count / pages_processed) * 100 if pages_processed > 0 else 0
+            cache_info = f"_cache{cache_hit_rate:.0f}pct" if cache_hit_rate > 0 else ""
             text_filename = f"mcp_{file_info.stored_filename.replace('.pdf', '')}_async_ocr_p{start_page}-{end_page}{cache_info}.txt"
             text_path = UPLOAD_DIR / text_filename
             text_path.write_text(results["full_text"], encoding='utf-8')

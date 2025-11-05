@@ -238,40 +238,73 @@ def ocr_result_display(results, file_hash, start_page, end_page, text_filename):
     # Generate unique ID for the preview content
     preview_id = f"ocr-preview-{file_hash}-{start_page}-{end_page}"
     
-    # Create performance metrics
-    cache_hit_rate = results.get("cache_hit_rate", 0)
-    processing_time = results.get("processing_time", 0)
-    
     # Create detailed page statistics
     cached_pages = results.get("cached_pages", [])
     llm_pages = results.get("llm_pages", [])
     fallback_pages = results.get("fallback_pages", [])
     
+    # Calculate performance metrics
+    pages_processed = results.get("pages_processed", 0)
+    cache_hit_rate = (len(cached_pages) / pages_processed) * 100 if pages_processed > 0 else 0
+    processing_time = results.get("processing_time", 0)
+    
     # Create processing details display with icons and colors
     page_details = []
-    for detail in results["processing_details"]:
-        if detail["method"] == "Cached":
-            icon = "💾"
-            method_color = "#17a2b8"  # Info blue
-        elif detail["method"] == "LLM OCR":
-            icon = "🤖"
-            method_color = "#28a745"  # Success green
-        elif detail["method"] == "PyMuPDF Fallback":
-            icon = "📄"
-            method_color = "#fd7e14"  # Warning orange
-        else:
-            icon = "❌"
-            method_color = "#dc3545"  # Danger red
-        
-        retry_text = f" (retry {detail['retry_count']})" if detail.get('retry_count', 0) > 0 else ""
-        token_info = f" | {detail['tokens']['input']+detail['tokens']['output']} tokens" if detail['tokens']['input']+detail['tokens']['output'] > 0 else ""
-        
-        page_details.append(
-            Li(
-                f"{icon} Page {detail['page']}: {detail['method']}{retry_text}{token_info}",
-                style=f"color: {method_color}; padding: 2px 0; font-size: 0.9em;"
+    
+    # Check if we have the old processing_details format or new page lists format
+    if "processing_details" in results:
+        # Old format - use existing logic
+        for detail in results["processing_details"]:
+            if detail["method"] == "Cached":
+                icon = "💾"
+                method_color = "#17a2b8"  # Info blue
+            elif detail["method"] == "LLM OCR":
+                icon = "🤖"
+                method_color = "#28a745"  # Success green
+            elif detail["method"] == "PyMuPDF Fallback":
+                icon = "📄"
+                method_color = "#fd7e14"  # Warning orange
+            else:
+                icon = "❌"
+                method_color = "#dc3545"  # Danger red
+            
+            retry_text = f" (retry {detail['retry_count']})" if detail.get('retry_count', 0) > 0 else ""
+            token_info = f" | {detail['tokens']['input']+detail['tokens']['output']} tokens" if detail['tokens']['input']+detail['tokens']['output'] > 0 else ""
+            
+            page_details.append(
+                Li(
+                    f"{icon} Page {detail['page']}: {detail['method']}{retry_text}{token_info}",
+                    style=f"color: {method_color}; padding: 2px 0; font-size: 0.9em;"
+                )
             )
-        )
+    else:
+        # New format - use page lists
+        # Add cached pages
+        for page in cached_pages:
+            page_details.append(
+                Li(
+                    f"💾 Page {page}: Cached",
+                    style="color: #17a2b8; padding: 2px 0; font-size: 0.9em;"
+                )
+            )
+        
+        # Add LLM processed pages
+        for page in llm_pages:
+            page_details.append(
+                Li(
+                    f"🤖 Page {page}: LLM OCR",
+                    style="color: #28a745; padding: 2px 0; font-size: 0.9em;"
+                )
+            )
+        
+        # Add fallback pages
+        for page in fallback_pages:
+            page_details.append(
+                Li(
+                    f"📄 Page {page}: PyMuPDF Fallback",
+                    style="color: #fd7e14; padding: 2px 0; font-size: 0.9em;"
+                )
+            )
     
     # Progress messages display
     progress_section = []

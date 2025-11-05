@@ -14,6 +14,7 @@ from config import OCR_CACHE_RETENTION_DAYS, OCR_CACHE_DB_PATH
 def compute_image_hash(base64_image: str) -> str:
     """
     Compute SHA256 hash of base64 image data for cache key.
+    DEPRECATED: Use compute_content_hash() for PDF content instead.
     
     Args:
         base64_image: Base64 encoded image string
@@ -22,6 +23,19 @@ def compute_image_hash(base64_image: str) -> str:
         Hex string of SHA256 hash
     """
     return hashlib.sha256(base64_image.encode('utf-8')).hexdigest()
+
+
+def compute_content_hash(content_bytes: bytes) -> str:
+    """
+    Compute SHA256 hash of content bytes for cache key.
+    
+    Args:
+        content_bytes: Raw bytes of content (PDF, image, etc.)
+        
+    Returns:
+        Hex string of SHA256 hash
+    """
+    return hashlib.sha256(content_bytes).hexdigest()
 
 
 async def init_cache_database():
