@@ -36,44 +36,40 @@ from .ocr_cache import (
 load_dotenv()
 
 
-def get_genai_client():
+def get_genai_client(api_key: Optional[str] = None):
     """
-    Get a GenAI client instance using user settings or environment variables.
+    Get a GenAI client instance using provided API key or environment variables.
 
     Priority:
-    1. User-configured API key from settings
+    1. Provided API key parameter
     2. GOOGLE_API_KEY environment variable
     3. GEMINI_API_KEY environment variable
+
+    Args:
+        api_key: Optional API key from session or caller
+
+    Returns:
+        GenAI client instance
     """
-    from src.web_app.core.database import get_settings
+    key = api_key or os.getenv('GOOGLE_API_KEY') or os.getenv('GEMINI_API_KEY')
 
-    try:
-        user_settings = get_settings()
-        api_key = user_settings.gemini_api_key or os.getenv('GOOGLE_API_KEY') or os.getenv('GEMINI_API_KEY')
+    if not key:
+        raise ValueError("No Gemini API key found. Please configure in settings or set GOOGLE_API_KEY environment variable.")
 
-        if not api_key:
-            raise ValueError("No Gemini API key found. Please configure in settings or set GOOGLE_API_KEY environment variable.")
-
-        return genai.Client(api_key=api_key)
-    except Exception as e:
-        # Fallback to environment variable only
-        return genai.Client()
+    return genai.Client(api_key=key)
 
 
-def get_ocr_model():
+def get_ocr_model(model: Optional[str] = None):
     """
-    Get the OCR model to use from user settings or config default.
+    Get the OCR model to use from provided model or config default.
+
+    Args:
+        model: Optional model name from session or caller
 
     Returns:
         str: Model name to use for OCR
     """
-    from src.web_app.core.database import get_settings
-
-    try:
-        user_settings = get_settings()
-        return user_settings.ocr_model or OCR_MODEL
-    except Exception:
-        return OCR_MODEL
+    return model or OCR_MODEL
 
 
 def load_ocr_prompt() -> str:
@@ -182,7 +178,9 @@ async def ocr_pdf_subset_with_llm(
     pdf_subset_bytes: bytes,
     page_nums: List[int],
     pdf_filename: Optional[str] = None,
-    pdf_path: Optional[Path] = None
+    pdf_path: Optional[Path] = None,
+    api_key: Optional[str] = None,
+    model_name: Optional[str] = None
 ) -> Tuple[str, int, int, str]:
     """
     Perform OCR on a PDF subset using Google GenAI with caching support.
@@ -192,6 +190,8 @@ async def ocr_pdf_subset_with_llm(
         page_nums: The corresponding page numbers
         pdf_filename: The name of the source PDF for debugging/caching
         pdf_path: Path to original PDF (for stable cache key)
+        api_key: Optional API key from session
+        model_name: Optional model name from session
 
     Returns:
         Tuple of (combined_extracted_text, input_tokens, output_tokens, method)
@@ -212,9 +212,9 @@ async def ocr_pdf_subset_with_llm(
         return text, input_tokens, output_tokens, "cached"
 
     try:
-        # Get client and model from user settings
-        client = get_genai_client()
-        model = get_ocr_model()
+        # Get client and model with session settings
+        client = get_genai_client(api_key)
+        model = get_ocr_model(model_name)
 
         # Load OCR prompt
         prompt = load_ocr_prompt()
@@ -269,17 +269,21 @@ async def process_page_chunk(
     pdf_path: Path,
     page_nums: List[int],
     semaphore: asyncio.Semaphore,
-    pdf_filename: Optional[str] = None
+    pdf_filename: Optional[str] = None,
+    api_key: Optional[str] = None,
+    model_name: Optional[str] = None
 ) -> List[Dict[str, Any]]:
     """
     Process a chunk of pages by creating and sending an in-memory PDF subset.
-    
+
     Args:
         pdf_path: Path to PDF file
         page_nums: List of page numbers (1-based) to process as a chunk
         semaphore: Semaphore for rate limiting
         pdf_filename: PDF filename for caching/debugging
-        
+        api_key: Optional API key from session
+        model_name: Optional model name from session
+
     Returns:
         List of dictionaries with page processing results
     """
@@ -287,10 +291,10 @@ async def process_page_chunk(
         try:
             # Create an in-memory PDF with just the required pages
             pdf_subset_bytes = create_pdf_subset_bytes(pdf_path, page_nums)
-            
+
             # Perform OCR on the PDF subset
             combined_text, input_tokens, output_tokens, method = await ocr_pdf_subset_with_llm(
-                pdf_subset_bytes, page_nums, pdf_filename, pdf_path
+                pdf_subset_bytes, page_nums, pdf_filename, pdf_path, api_key, model_name
             )
             
             # Since we process one page at a time, no parsing needed
@@ -325,37 +329,41 @@ async def retry_failed_chunks(
     attempt: int,
     pdf_path: Path,
     semaphore: asyncio.Semaphore,
-    pdf_filename: Optional[str] = None
+    pdf_filename: Optional[str] = None,
+    api_key: Optional[str] = None,
+    model_name: Optional[str] = None
 ) -> List[Dict[str, Any]]:
     """
     Retry processing failed pages by regrouping them into chunks with exponential backoff.
-    
+
     Args:
         failed_pages: List of failed page results
         attempt: Current retry attempt number
         pdf_path: Path to PDF file
         semaphore: Semaphore for rate limiting
         pdf_filename: PDF filename for caching/debugging
-        
+        api_key: Optional API key from session
+        model_name: Optional model name from session
+
     Returns:
         List of retry results
     """
     # Exponential backoff delay
     delay = OCR_RETRY_DELAY_BASE * (2 ** (attempt - 1))
     await asyncio.sleep(delay)
-    
+
     print(f"Retrying {len(failed_pages)} failed pages (attempt {attempt})")
-    
+
     # Group failed pages into chunks
     failed_page_nums = sorted([r['page'] for r in failed_pages])
     page_chunks = []
-    
+
     # Process one page at a time
     page_chunks = [[page] for page in failed_page_nums]
-    
+
     # Create retry tasks for chunks
     retry_tasks = [
-        process_page_chunk(pdf_path, chunk, semaphore, pdf_filename)
+        process_page_chunk(pdf_path, chunk, semaphore, pdf_filename, api_key, model_name)
         for chunk in page_chunks
     ]
     
@@ -393,17 +401,21 @@ async def process_document_async(
     pdf_path: Path,
     start_page: int,
     end_page: int,
-    progress_callback: Optional[Callable[[str], None]] = None
+    progress_callback: Optional[Callable[[str], None]] = None,
+    api_key: Optional[str] = None,
+    model_name: Optional[str] = None
 ) -> Dict:
     """
     Process a document with async chunked processing, native PDF handling, caching, and retries.
-    
+
     Args:
         pdf_path: Path to PDF file
         start_page: Starting page number (1-based)
         end_page: Ending page number (1-based)
         progress_callback: Optional callback for progress updates
-        
+        api_key: Optional API key from session
+        model_name: Optional model name from session
+
     Returns:
         Dictionary with processing results and statistics
     """
@@ -430,13 +442,13 @@ async def process_document_async(
     
     # Process all chunks initially
     chunk_tasks = [
-        process_page_chunk(pdf_path, chunk, semaphore, pdf_filename)
+        process_page_chunk(pdf_path, chunk, semaphore, pdf_filename, api_key, model_name)
         for chunk in page_chunks
     ]
-    
+
     # Process initial chunks
     chunk_results_list = await asyncio.gather(*chunk_tasks, return_exceptions=True)
-    
+
     # Flatten results and handle exceptions
     all_results = []
     for i, result_list in enumerate(chunk_results_list):
@@ -456,16 +468,16 @@ async def process_document_async(
                 })
         else:
             all_results.extend(result_list)
-    
+
     # Retry failed pages
     failed_pages = [r for r in all_results if not r["success"]]
-    
+
     for retry_attempt in range(1, OCR_MAX_RETRIES + 1):
         if not failed_pages:
             break
-            
+
         retry_results = await retry_failed_chunks(
-            failed_pages, retry_attempt, pdf_path, semaphore, pdf_filename
+            failed_pages, retry_attempt, pdf_path, semaphore, pdf_filename, api_key, model_name
         )
         
         # Update results and prepare for next retry

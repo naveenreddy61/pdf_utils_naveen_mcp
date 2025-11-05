@@ -6,8 +6,9 @@ from fasthtml.common import *
 from starlette.requests import Request
 from config import UPLOAD_DIR, MAX_FILE_SIZE_BYTES, MAX_FILE_SIZE_MB, ALLOWED_EXTENSIONS
 from src.web_app.core.database import (
-    FileRecord, get_file_info, update_last_accessed, insert_file_record, get_settings
+    FileRecord, get_file_info, update_last_accessed, insert_file_record
 )
+from src.web_app.core.session_settings import get_session_settings
 from src.web_app.core.utils import calculate_file_hash, sanitize_filename
 from src.web_app.services.pdf_service import get_page_count
 from src.web_app.ui.components import (
@@ -142,9 +143,9 @@ def setup_routes(app, rt):
 
 
     @rt('/settings')
-    def settings_page():
-        """Settings page for configuring Gemini API and models."""
-        user_settings = get_settings()
+    def settings_page(session):
+        """Settings page for configuring Gemini API and models (session-based)."""
+        user_settings = get_session_settings(session)
         has_env_key = bool(os.getenv('GOOGLE_API_KEY') or os.getenv('GEMINI_API_KEY'))
 
         return Titled("Settings - PDF Utilities",
@@ -163,6 +164,13 @@ def setup_routes(app, rt):
                 Div(
                     H3("Gemini API Configuration"),
 
+                    # Session notice
+                    Div(
+                        P("⚠️ Note: Settings are stored in your session only and will be lost when you close the browser.",
+                          style="color: #856404; margin: 0;"),
+                        style="background-color: #fff3cd; border: 1px solid #ffeaa7; padding: 10px; border-radius: 4px; margin-bottom: 15px;"
+                    ),
+
                     # API Key status
                     Div(
                         P("API Key Status:", style="font-weight: bold; margin-bottom: 5px;"),
@@ -171,8 +179,8 @@ def setup_routes(app, rt):
                             style=f"color: {'#28a745' if has_env_key else '#dc3545'}; margin-bottom: 10px;"
                         ),
                         P(
-                            f"✅ Custom API key configured" if user_settings.gemini_api_key else "ℹ️ No custom API key (using environment variable)" if has_env_key else "⚠️ No API key configured",
-                            style=f"color: {'#28a745' if user_settings.gemini_api_key else '#17a2b8' if has_env_key else '#ffc107'};"
+                            f"✅ Session API key configured" if user_settings['gemini_api_key'] else "ℹ️ No session API key (using environment variable)" if has_env_key else "⚠️ No API key configured",
+                            style=f"color: {'#28a745' if user_settings['gemini_api_key'] else '#17a2b8' if has_env_key else '#ffc107'};"
                         ),
                         style="background-color: #f8f9fa; padding: 15px; border-radius: 4px; margin-bottom: 20px;"
                     ),
@@ -180,7 +188,7 @@ def setup_routes(app, rt):
                     # API Key input
                     Form(
                         Div(
-                            Label("Gemini API Key (optional)", _for="api-key-input", style="display: block; margin-bottom: 5px; font-weight: bold;"),
+                            Label("Gemini API Key (optional - session only)", _for="api-key-input", style="display: block; margin-bottom: 5px; font-weight: bold;"),
                             P("Leave empty to use environment variable. Get your API key from ",
                               A("Google AI Studio", href="https://aistudio.google.com/app/apikey", target="_blank"),
                               style="font-size: 0.9em; color: #6c757d; margin-bottom: 10px;"),
@@ -188,8 +196,8 @@ def setup_routes(app, rt):
                                 type="password",
                                 id="api-key-input",
                                 name="gemini_api_key",
-                                placeholder="Enter your Gemini API key (optional)",
-                                value="••••••••" if user_settings.gemini_api_key else "",
+                                placeholder="Enter your Gemini API key (session only)",
+                                value="••••••••" if user_settings['gemini_api_key'] else "",
                                 style="width: 100%; padding: 10px; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 4px;"
                             ),
                             Button(
@@ -197,7 +205,7 @@ def setup_routes(app, rt):
                                 type="button",
                                 onclick="document.getElementById('api-key-input').value = ''; saveSettings();",
                                 style="background-color: #dc3545; margin-bottom: 15px;"
-                            ) if user_settings.gemini_api_key else None,
+                            ) if user_settings['gemini_api_key'] else None,
                             style="margin-bottom: 20px;"
                         ),
 
@@ -207,7 +215,7 @@ def setup_routes(app, rt):
                             P("Select the Gemini model to use for OCR processing",
                               style="font-size: 0.9em; color: #6c757d; margin-bottom: 10px;"),
                             Select(
-                                Option(user_settings.ocr_model, value=user_settings.ocr_model, selected=True),
+                                Option(user_settings['ocr_model'], value=user_settings['ocr_model'], selected=True),
                                 id="model-select",
                                 name="ocr_model",
                                 style="width: 100%; padding: 10px; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 4px;"

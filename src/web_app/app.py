@@ -17,15 +17,16 @@ def create_app():
     """Create and configure the FastHTML application."""
     # Create upload directory if it doesn't exist
     UPLOAD_DIR.mkdir(exist_ok=True)
-    
-    # Initialize FastHTML app
+
+    # Initialize FastHTML app with session support
     app, rt = fast_app(
         static_path='uploads',
         hdrs=(
             Link(rel='stylesheet', href='https://cdn.jsdelivr.net/npm/normalize.css@8.0.1/normalize.min.css'),
             Script(src="https://unpkg.com/htmx.org@2.0.0"),
             Style(CSS_STYLES)
-        )
+        ),
+        secret_key='your-secret-key-change-in-production'  # Required for session support
     )
     
     # Setup routes

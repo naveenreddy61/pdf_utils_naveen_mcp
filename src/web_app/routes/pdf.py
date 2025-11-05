@@ -8,6 +8,7 @@ from fasthtml.common import *
 from starlette.responses import StreamingResponse
 from config import UPLOAD_DIR, MIN_DPI, MAX_DPI, DEFAULT_DPI
 from src.web_app.core.database import get_file_info
+from src.web_app.core.session_settings import get_session_settings
 from src.web_app.core.utils import count_tokens
 from src.web_app.services import pdf_service
 from src.web_app.ui.components import error_message, toc_display, image_extraction_gallery, ocr_result_display
@@ -510,33 +511,38 @@ def setup_routes(app, rt):
     
     
     @rt('/process/extract-text-llm/{file_hash}')
-    async def process_extract_text_llm(file_hash: str, start_page: int, end_page: int):
+    async def process_extract_text_llm(file_hash: str, start_page: int, end_page: int, session):
         """Extract text using async LLM OCR with caching and batch processing."""
         try:
             file_info = get_file_info(file_hash)
             if not file_info:
                 return Div(error_message("File not found."))
-            
+
             file_path = UPLOAD_DIR / file_info.stored_filename
-            
+
             # Validate page range
             if start_page < 1 or end_page > file_info.page_count or start_page > end_page:
                 return Div(error_message("Invalid page range."))
-            
+
+            # Get session settings for API key and model
+            user_settings = get_session_settings(session)
+
             # Store progress messages
             progress_messages = []
-            
+
             def progress_callback(message: str):
                 progress_messages.append(message)
                 print(f"OCR Progress: {message}")
-            
-            # Process pages with async OCR
+
+            # Process pages with async OCR, passing session settings
             print(f"Starting async LLM OCR extraction for pages {start_page} to {end_page} from: {file_path}")
             results = await ocr_service.process_pages_async_batch(
-                file_path, 
-                start_page, 
+                file_path,
+                start_page,
                 end_page,
-                progress_callback=progress_callback
+                progress_callback=progress_callback,
+                api_key=user_settings['gemini_api_key'],
+                model_name=user_settings['ocr_model']
             )
             
             # Add progress messages to results for display
