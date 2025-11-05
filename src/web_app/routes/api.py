@@ -48,7 +48,8 @@ def setup_routes(app, rt):
             models_list = []
             models = client.models.list()
 
-            for model in models.items:
+            # Iterate directly over the Pager object
+            for model in models:
                 # Only include models that support generateContent
                 if "generateContent" in model.supported_actions:
                     models_list.append({
