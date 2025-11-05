@@ -21,16 +21,17 @@ def setup_routes(app, rt):
     @rt('/')
     def index():
         """Main page with file upload form."""
-        return Titled("PDF Utilities",
+        return Titled("PDF & Image Utilities",
             Div(
-                H2("PDF Processing Tools"),
-                P("Upload a PDF file to use various processing tools. Files are kept for 30 days."),
+                H2("PDF & Image Processing Tools"),
+                P("Upload a PDF or image file to use various processing tools. Files are kept for 30 days."),
                 P(f"Maximum file size: {MAX_FILE_SIZE_MB}MB"),
-                
+                P("Supported formats: PDF, JPG, JPEG, PNG, WEBP", style="color: #666; font-style: italic;"),
+
                 upload_form(),
-                
+
                 Div(id="upload-result"),
-                
+
                 cls="container"
             )
         )
@@ -60,10 +61,15 @@ def setup_routes(app, rt):
                     error_message(f"Error: Invalid file upload. Received type: {type(pdf_file)}")
                 )
             
-            # Check file extension
-            if not pdf_file.filename.lower().endswith('.pdf'):
+            # Check file extension and determine file type
+            filename_lower = pdf_file.filename.lower()
+            if filename_lower.endswith('.pdf'):
+                file_type = 'pdf'
+            elif any(filename_lower.endswith(ext) for ext in ['.jpg', '.jpeg', '.png', '.webp']):
+                file_type = 'image'
+            else:
                 return page_with_result(
-                    error_message("Error: Only PDF files are allowed.")
+                    error_message("Error: Only PDF and image files (JPG, JPEG, PNG, WEBP) are allowed.")
                 )
             
             # Read file content
@@ -97,10 +103,13 @@ def setup_routes(app, rt):
                 print(f"Saving file to: {file_path}")
                 file_path.write_bytes(content)
                 print(f"File saved successfully")
-                
-                # Get PDF info
-                page_count = get_page_count(file_path)
-                
+
+                # Get file info based on type
+                if file_type == 'pdf':
+                    page_count = get_page_count(file_path)
+                else:  # image
+                    page_count = 1  # Images are treated as single page
+
                 # Store in database
                 file_info = FileRecord(
                     file_hash=file_hash,
@@ -108,6 +117,7 @@ def setup_routes(app, rt):
                     stored_filename=stored_filename,
                     file_size=len(content),
                     page_count=page_count,
+                    file_type=file_type,
                     upload_date=datetime.now().isoformat(),
                     last_accessed=datetime.now().isoformat()
                 )
@@ -118,7 +128,7 @@ def setup_routes(app, rt):
             return page_with_result(
                 Div(
                     file_info_display(file_info, is_existing),
-                    operation_buttons(file_hash),
+                    operation_buttons(file_hash, file_info.file_type),
                     Div(id="operation-result")
                 )
             )
