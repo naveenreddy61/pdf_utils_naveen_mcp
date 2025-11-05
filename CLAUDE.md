@@ -74,6 +74,18 @@ uv add [package_name]   # Add new dependency (NOT manual pyproject.toml edit)
 
 ## Async Development Patterns
 
+### CPU-Bound Operations (Token Counting, Heavy Processing)
+For CPU-bound synchronous operations that would block the event loop:
+- **Pattern**: Use `asyncio.to_thread()` to run blocking operations in thread pool
+- **Example**: Token counting with tiktoken (`src/web_app/core/utils.py:31`)
+  ```python
+  async def count_tokens(text: str) -> int:
+      """Non-blocking token counting."""
+      return await asyncio.to_thread(_count_tokens_sync, text)
+  ```
+- **Benefits**: Prevents blocking other concurrent requests (downloads, uploads, etc.)
+- **Use cases**: tiktoken encoding, heavy CPU processing, synchronous library calls
+
 ### OCR Service Architecture
 The OCR service uses async batch processing for optimal performance:
 - **Batch Size**: Configurable via `OCR_CONCURRENT_REQUESTS` (default: 20)
