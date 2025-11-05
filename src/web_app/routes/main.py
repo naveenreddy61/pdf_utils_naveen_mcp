@@ -1,16 +1,17 @@
 """Main routes for the web application."""
 
+import os
 from datetime import datetime
 from fasthtml.common import *
 from starlette.requests import Request
 from config import UPLOAD_DIR, MAX_FILE_SIZE_BYTES, MAX_FILE_SIZE_MB, ALLOWED_EXTENSIONS
 from src.web_app.core.database import (
-    FileRecord, get_file_info, update_last_accessed, insert_file_record
+    FileRecord, get_file_info, update_last_accessed, insert_file_record, get_settings
 )
 from src.web_app.core.utils import calculate_file_hash, sanitize_filename
 from src.web_app.services.pdf_service import get_page_count
 from src.web_app.ui.components import (
-    upload_form, page_with_result, file_info_display, 
+    upload_form, page_with_result, file_info_display,
     operation_buttons, error_message
 )
 
@@ -23,14 +24,22 @@ def setup_routes(app, rt):
         """Main page with file upload form."""
         return Titled("PDF Utilities",
             Div(
-                H2("PDF Processing Tools"),
+                # Header with settings button
+                Div(
+                    H2("PDF Processing Tools", style="display: inline-block; margin-right: 20px;"),
+                    A("⚙️ Settings",
+                      href="/settings",
+                      cls="button",
+                      style="background-color: #6c757d; padding: 8px 16px; text-decoration: none; display: inline-block; font-size: 0.9em;"),
+                    style="margin-bottom: 1rem; display: flex; align-items: center;"
+                ),
                 P("Upload a PDF file to use various processing tools. Files are kept for 30 days."),
                 P(f"Maximum file size: {MAX_FILE_SIZE_MB}MB"),
-                
+
                 upload_form(),
-                
+
                 Div(id="upload-result"),
-                
+
                 cls="container"
             )
         )
@@ -130,3 +139,186 @@ def setup_routes(app, rt):
             return page_with_result(
                 error_message(f"Error uploading file: {str(e)}")
             )
+
+
+    @rt('/settings')
+    def settings_page():
+        """Settings page for configuring Gemini API and models."""
+        user_settings = get_settings()
+        has_env_key = bool(os.getenv('GOOGLE_API_KEY') or os.getenv('GEMINI_API_KEY'))
+
+        return Titled("Settings - PDF Utilities",
+            Div(
+                # Header
+                Div(
+                    H2("Settings", style="display: inline-block; margin-right: 20px;"),
+                    A("← Back to Home",
+                      href="/",
+                      cls="button",
+                      style="background-color: #6c757d; padding: 8px 16px; text-decoration: none; display: inline-block; font-size: 0.9em;"),
+                    style="margin-bottom: 1rem; display: flex; align-items: center;"
+                ),
+
+                # Settings form
+                Div(
+                    H3("Gemini API Configuration"),
+
+                    # API Key status
+                    Div(
+                        P("API Key Status:", style="font-weight: bold; margin-bottom: 5px;"),
+                        P(
+                            f"✅ Environment variable {'GOOGLE_API_KEY' if os.getenv('GOOGLE_API_KEY') else 'GEMINI_API_KEY'} is set" if has_env_key else "❌ No environment variable set",
+                            style=f"color: {'#28a745' if has_env_key else '#dc3545'}; margin-bottom: 10px;"
+                        ),
+                        P(
+                            f"✅ Custom API key configured" if user_settings.gemini_api_key else "ℹ️ No custom API key (using environment variable)" if has_env_key else "⚠️ No API key configured",
+                            style=f"color: {'#28a745' if user_settings.gemini_api_key else '#17a2b8' if has_env_key else '#ffc107'};"
+                        ),
+                        style="background-color: #f8f9fa; padding: 15px; border-radius: 4px; margin-bottom: 20px;"
+                    ),
+
+                    # API Key input
+                    Form(
+                        Div(
+                            Label("Gemini API Key (optional)", _for="api-key-input", style="display: block; margin-bottom: 5px; font-weight: bold;"),
+                            P("Leave empty to use environment variable. Get your API key from ",
+                              A("Google AI Studio", href="https://aistudio.google.com/app/apikey", target="_blank"),
+                              style="font-size: 0.9em; color: #6c757d; margin-bottom: 10px;"),
+                            Input(
+                                type="password",
+                                id="api-key-input",
+                                name="gemini_api_key",
+                                placeholder="Enter your Gemini API key (optional)",
+                                value="••••••••" if user_settings.gemini_api_key else "",
+                                style="width: 100%; padding: 10px; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 4px;"
+                            ),
+                            Button(
+                                "Clear API Key",
+                                type="button",
+                                onclick="document.getElementById('api-key-input').value = ''; saveSettings();",
+                                style="background-color: #dc3545; margin-bottom: 15px;"
+                            ) if user_settings.gemini_api_key else None,
+                            style="margin-bottom: 20px;"
+                        ),
+
+                        # Model selection
+                        Div(
+                            Label("OCR Model", _for="model-select", style="display: block; margin-bottom: 5px; font-weight: bold;"),
+                            P("Select the Gemini model to use for OCR processing",
+                              style="font-size: 0.9em; color: #6c757d; margin-bottom: 10px;"),
+                            Select(
+                                Option(user_settings.ocr_model, value=user_settings.ocr_model, selected=True),
+                                id="model-select",
+                                name="ocr_model",
+                                style="width: 100%; padding: 10px; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 4px;"
+                            ),
+                            Button(
+                                "🔄 Fetch Available Models",
+                                type="button",
+                                onclick="fetchModels()",
+                                id="fetch-models-btn",
+                                style="background-color: #17a2b8; margin-bottom: 15px;"
+                            ),
+                            Div(id="model-status", style="margin-top: 10px;"),
+                            style="margin-bottom: 20px;"
+                        ),
+
+                        # Save button
+                        Button(
+                            "💾 Save Settings",
+                            type="button",
+                            onclick="saveSettings()",
+                            style="background-color: #28a745; padding: 12px 24px; font-size: 1em;"
+                        ),
+
+                        Div(id="save-status", style="margin-top: 15px;"),
+
+                        id="settings-form"
+                    ),
+
+                    cls="settings-container",
+                    style="max-width: 800px;"
+                ),
+
+                # JavaScript for handling API calls
+                Script("""
+                    async function fetchModels() {
+                        const btn = document.getElementById('fetch-models-btn');
+                        const statusDiv = document.getElementById('model-status');
+                        const modelSelect = document.getElementById('model-select');
+
+                        btn.disabled = true;
+                        btn.textContent = '⏳ Fetching models...';
+                        statusDiv.innerHTML = '<p style="color: #17a2b8;">Fetching models from Gemini API...</p>';
+
+                        try {
+                            const response = await fetch('/api/models/list');
+                            const data = await response.json();
+
+                            if (data.error) {
+                                statusDiv.innerHTML = `<p style="color: #dc3545;">❌ Error: ${data.error}</p>`;
+                            } else {
+                                // Clear existing options
+                                modelSelect.innerHTML = '';
+
+                                // Add models to dropdown
+                                data.models.forEach(model => {
+                                    const option = document.createElement('option');
+                                    option.value = model.name;
+                                    option.textContent = `${model.display_name} (${model.name})`;
+                                    modelSelect.appendChild(option);
+                                });
+
+                                statusDiv.innerHTML = `<p style="color: #28a745;">✅ Found ${data.count} models</p>`;
+                            }
+                        } catch (error) {
+                            statusDiv.innerHTML = `<p style="color: #dc3545;">❌ Error: ${error.message}</p>`;
+                        } finally {
+                            btn.disabled = false;
+                            btn.textContent = '🔄 Fetch Available Models';
+                        }
+                    }
+
+                    async function saveSettings() {
+                        const statusDiv = document.getElementById('save-status');
+                        const apiKeyInput = document.getElementById('api-key-input');
+                        const modelSelect = document.getElementById('model-select');
+
+                        statusDiv.innerHTML = '<p style="color: #17a2b8;">💾 Saving settings...</p>';
+
+                        try {
+                            // Only include API key if it's not the masked value
+                            const apiKey = apiKeyInput.value === '••••••••' ? null : apiKeyInput.value;
+
+                            const response = await fetch('/api/settings', {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                },
+                                body: JSON.stringify({
+                                    gemini_api_key: apiKey,
+                                    ocr_model: modelSelect.value
+                                })
+                            });
+
+                            const data = await response.json();
+
+                            if (data.error) {
+                                statusDiv.innerHTML = `<p style="color: #dc3545;">❌ Error: ${data.error}</p>`;
+                            } else {
+                                statusDiv.innerHTML = `<p style="color: #28a745;">✅ ${data.message}</p>`;
+
+                                // Reload page after 1 second to show updated status
+                                setTimeout(() => {
+                                    window.location.reload();
+                                }, 1000);
+                            }
+                        } catch (error) {
+                            statusDiv.innerHTML = `<p style="color: #dc3545;">❌ Error: ${error.message}</p>`;
+                        }
+                    }
+                """),
+
+                cls="container"
+            )
+        )

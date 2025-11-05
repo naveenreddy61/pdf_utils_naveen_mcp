@@ -18,12 +18,21 @@ class FileRecord:
     last_accessed: str
 
 
+@dataclass
+class SettingsRecord:
+    id: int  # Primary key (always 1 for single settings record)
+    gemini_api_key: str = ""  # User-provided API key (empty means use env var)
+    ocr_model: str = "gemini-2.5-flash-lite"  # Selected OCR model
+    updated_at: str = ""
+
+
 # Ensure data directory exists
 DB_PATH.parent.mkdir(exist_ok=True)
 
 # Initialize database
 db = database(str(DB_PATH))
 files = db.create(FileRecord, pk='file_hash')
+settings = db.create(SettingsRecord, pk='id')
 
 
 def get_file_info(file_hash: str):
@@ -53,3 +62,33 @@ def get_old_files(cutoff_date: datetime):
     """Get files older than the cutoff date."""
     cutoff_str = cutoff_date.isoformat()
     return files(where=f"upload_date < '{cutoff_str}'")
+
+
+def get_settings():
+    """Get user settings, returns default if not found."""
+    try:
+        return settings.get(1)
+    except NotFoundError:
+        # Create default settings
+        default_settings = SettingsRecord(
+            id=1,
+            gemini_api_key="",
+            ocr_model="gemini-2.5-flash-lite",
+            updated_at=datetime.now().isoformat()
+        )
+        settings.insert(default_settings)
+        return default_settings
+
+
+def update_settings(gemini_api_key: str = None, ocr_model: str = None):
+    """Update user settings."""
+    current = get_settings()
+    updates = {'updated_at': datetime.now().isoformat()}
+
+    if gemini_api_key is not None:
+        updates['gemini_api_key'] = gemini_api_key
+    if ocr_model is not None:
+        updates['ocr_model'] = ocr_model
+
+    settings.update(updates, 1)
+    return get_settings()

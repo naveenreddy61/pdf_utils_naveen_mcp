@@ -15,9 +15,9 @@ from google import genai
 from google.genai import types
 
 from config import (
-    OCR_MODEL, 
-    OCR_TEMPERATURE, 
-    OCR_TIMEOUT, 
+    OCR_MODEL,
+    OCR_TEMPERATURE,
+    OCR_TIMEOUT,
     OCR_MAX_TOKENS,
     OCR_CONCURRENT_REQUESTS,
     OCR_MAX_RETRIES,
@@ -32,9 +32,48 @@ from .ocr_cache import (
     init_cache_database
 )
 
-# Load environment variables and initialize the GenAI client
+# Load environment variables
 load_dotenv()
-client = genai.Client()
+
+
+def get_genai_client():
+    """
+    Get a GenAI client instance using user settings or environment variables.
+
+    Priority:
+    1. User-configured API key from settings
+    2. GOOGLE_API_KEY environment variable
+    3. GEMINI_API_KEY environment variable
+    """
+    from src.web_app.core.database import get_settings
+
+    try:
+        user_settings = get_settings()
+        api_key = user_settings.gemini_api_key or os.getenv('GOOGLE_API_KEY') or os.getenv('GEMINI_API_KEY')
+
+        if not api_key:
+            raise ValueError("No Gemini API key found. Please configure in settings or set GOOGLE_API_KEY environment variable.")
+
+        return genai.Client(api_key=api_key)
+    except Exception as e:
+        # Fallback to environment variable only
+        return genai.Client()
+
+
+def get_ocr_model():
+    """
+    Get the OCR model to use from user settings or config default.
+
+    Returns:
+        str: Model name to use for OCR
+    """
+    from src.web_app.core.database import get_settings
+
+    try:
+        user_settings = get_settings()
+        return user_settings.ocr_model or OCR_MODEL
+    except Exception:
+        return OCR_MODEL
 
 
 def load_ocr_prompt() -> str:
@@ -147,13 +186,13 @@ async def ocr_pdf_subset_with_llm(
 ) -> Tuple[str, int, int, str]:
     """
     Perform OCR on a PDF subset using Google GenAI with caching support.
-    
+
     Args:
         pdf_subset_bytes: The byte content of the PDF subset
         page_nums: The corresponding page numbers
         pdf_filename: The name of the source PDF for debugging/caching
         pdf_path: Path to original PDF (for stable cache key)
-        
+
     Returns:
         Tuple of (combined_extracted_text, input_tokens, output_tokens, method)
         method is "cached" or "llm"
@@ -164,30 +203,34 @@ async def ocr_pdf_subset_with_llm(
     else:
         # Fallback to content hash if no path available
         cache_key = compute_content_hash(pdf_subset_bytes)
-    
+
     # Check cache first
     cached_result = await get_cached_ocr(cache_key)
-    
+
     if cached_result:
         text, input_tokens, output_tokens = cached_result
         return text, input_tokens, output_tokens, "cached"
-    
+
     try:
+        # Get client and model from user settings
+        client = get_genai_client()
+        model = get_ocr_model()
+
         # Load OCR prompt
         prompt = load_ocr_prompt()
         # Since we only process one page at a time, no need to mention page numbers
-        
+
         # Create a Part object with the PDF data directly
         pdf_part = types.Part(
             inline_data=types.Blob(mime_type='application/pdf', data=pdf_subset_bytes)
         )
-        
+
         contents = [prompt, pdf_part]
-        
+
         # Make the async API call
         response = await asyncio.wait_for(
             client.aio.models.generate_content(
-                model=OCR_MODEL,
+                model=model,
                 contents=contents,
                 config=types.GenerateContentConfig(
                     temperature=OCR_TEMPERATURE,

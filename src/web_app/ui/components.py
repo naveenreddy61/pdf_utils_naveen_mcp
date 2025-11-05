@@ -20,7 +20,15 @@ def page_with_result(result_content):
     """Return a full page with upload form and result content."""
     return Titled("PDF Utilities",
         Div(
-            H2("PDF Processing Tools"),
+            # Header with settings button
+            Div(
+                H2("PDF Processing Tools", style="display: inline-block; margin-right: 20px;"),
+                A("⚙️ Settings",
+                  href="/settings",
+                  cls="button",
+                  style="background-color: #6c757d; padding: 8px 16px; text-decoration: none; display: inline-block; font-size: 0.9em;"),
+                style="margin-bottom: 1rem; display: flex; align-items: center;"
+            ),
             P("Upload a PDF file to use various processing tools. Files are kept for 30 days."),
             P(f"Maximum file size: {MAX_FILE_SIZE_MB}MB"),
             upload_form(),
