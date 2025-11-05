@@ -1,6 +1,6 @@
 """Session-based settings management for ephemeral API key and model storage."""
 
-from typing import Optional
+from typing import Optional, List, Dict
 from config import OCR_MODEL
 
 
@@ -12,11 +12,12 @@ def get_session_settings(session: dict) -> dict:
         session: FastHTML session dict
 
     Returns:
-        dict with gemini_api_key and ocr_model
+        dict with gemini_api_key, ocr_model, and available_models
     """
     return {
         'gemini_api_key': session.get('gemini_api_key', ''),
-        'ocr_model': session.get('ocr_model', OCR_MODEL)
+        'ocr_model': session.get('ocr_model', OCR_MODEL),
+        'available_models': session.get('available_models', [])
     }
 
 
@@ -41,7 +42,19 @@ def update_session_settings(session: dict, gemini_api_key: Optional[str] = None,
     return get_session_settings(session)
 
 
+def save_available_models(session: dict, models: List[Dict]) -> None:
+    """
+    Save the list of available models to session.
+
+    Args:
+        session: FastHTML session dict
+        models: List of model dictionaries
+    """
+    session['available_models'] = models
+
+
 def clear_session_settings(session: dict):
     """Clear all settings from session."""
     session.pop('gemini_api_key', None)
     session.pop('ocr_model', None)
+    session.pop('available_models', None)

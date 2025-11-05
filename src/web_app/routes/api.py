@@ -7,7 +7,7 @@ from starlette.responses import JSONResponse
 from google import genai
 from src.web_app.services.cleanup import cleanup_old_files
 from src.web_app.ui.components import success_message, error_message
-from src.web_app.core.session_settings import get_session_settings, update_session_settings
+from src.web_app.core.session_settings import get_session_settings, update_session_settings, save_available_models
 
 
 def setup_routes(app, rt):
@@ -59,6 +59,9 @@ def setup_routes(app, rt):
                         "input_token_limit": model.input_token_limit,
                         "output_token_limit": model.output_token_limit
                     })
+
+            # Save models to session for persistence across page loads
+            save_available_models(session, models_list)
 
             return JSONResponse({
                 "models": models_list,

@@ -215,7 +215,14 @@ def setup_routes(app, rt):
                             P("Select the Gemini model to use for OCR processing",
                               style="font-size: 0.9em; color: #6c757d; margin-bottom: 10px;"),
                             Select(
-                                Option(user_settings['ocr_model'], value=user_settings['ocr_model'], selected=True),
+                                # If we have available models in session, populate dropdown
+                                *([Option(
+                                    f"{model['display_name']} ({model['name']})",
+                                    value=model['name'],
+                                    selected=(model['name'] == user_settings['ocr_model'])
+                                ) for model in user_settings['available_models']]
+                                if user_settings['available_models']
+                                else [Option(user_settings['ocr_model'], value=user_settings['ocr_model'], selected=True)]),
                                 id="model-select",
                                 name="ocr_model",
                                 style="width: 100%; padding: 10px; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 4px;"
@@ -227,7 +234,15 @@ def setup_routes(app, rt):
                                 id="fetch-models-btn",
                                 style="background-color: #17a2b8; margin-bottom: 15px;"
                             ),
-                            Div(id="model-status", style="margin-top: 10px;"),
+                            Div(
+                                P(f"ℹ️ {len(user_settings['available_models'])} models loaded from session",
+                                  style="color: #28a745; font-size: 0.9em; margin: 0;")
+                                if user_settings['available_models']
+                                else P("Click 'Fetch Available Models' to populate the dropdown",
+                                      style="color: #6c757d; font-size: 0.9em; margin: 0;"),
+                                id="model-status",
+                                style="margin-top: 10px;"
+                            ),
                             style="margin-bottom: 20px;"
                         ),
 
