@@ -1,23 +1,6 @@
-"""Backward compatibility wrapper for config.py.
+"""Configuration settings for PDF Utilities Web Application."""
 
-This file maintains compatibility for local development.
-When installed as a package, imports come from pdf_utils.config instead.
-
-DEPRECATED: Update your imports to use:
-    from pdf_utils.config import ...
-"""
-
-import warnings
-
-warnings.warn(
-    "Importing from root config.py is deprecated. "
-    "Use 'from pdf_utils.config import ...' instead.",
-    DeprecationWarning,
-    stacklevel=2
-)
-
-# Re-export everything from the package
-from src.pdf_utils.config import *
+from pathlib import Path
 
 # File handling settings
 FILE_RETENTION_DAYS = 30

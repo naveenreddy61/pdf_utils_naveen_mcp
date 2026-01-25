@@ -3,14 +3,14 @@
 import asyncio
 import uvicorn
 from fasthtml.common import *
-from config import UPLOAD_DIR, SERVER_PORT
-from src.web_app.ui.styles import CSS_STYLES
-from src.web_app.services.cleanup import daily_cleanup
+from pdf_utils.config import UPLOAD_DIR, SERVER_PORT
+from web_app.ui.styles import CSS_STYLES
+from web_app.services.cleanup import daily_cleanup
 
 # Import route setup functions
-from src.web_app.routes import main as main_routes
-from src.web_app.routes import pdf as pdf_routes
-from src.web_app.routes import api as api_routes
+from web_app.routes import main as main_routes
+from web_app.routes import pdf as pdf_routes
+from web_app.routes import api as api_routes
 
 
 def create_app():

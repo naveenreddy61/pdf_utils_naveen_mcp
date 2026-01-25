@@ -3,13 +3,13 @@
 from datetime import datetime
 from fasthtml.common import *
 from starlette.requests import Request
-from config import UPLOAD_DIR, MAX_FILE_SIZE_BYTES, MAX_FILE_SIZE_MB, ALLOWED_EXTENSIONS
-from src.web_app.core.database import (
+from pdf_utils.config import UPLOAD_DIR, MAX_FILE_SIZE_BYTES, MAX_FILE_SIZE_MB, ALLOWED_EXTENSIONS
+from web_app.core.database import (
     FileRecord, get_file_info, update_last_accessed, insert_file_record
 )
-from src.web_app.core.utils import calculate_file_hash, sanitize_filename
-from src.web_app.services.pdf_service import get_page_count
-from src.web_app.ui.components import (
+from web_app.core.utils import calculate_file_hash, sanitize_filename
+from web_app.services.pdf_service import get_page_count
+from web_app.ui.components import (
     upload_form, page_with_result, file_info_display, 
     operation_buttons, error_message
 )

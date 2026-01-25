@@ -29,6 +29,42 @@ A powerful Model Context Protocol (MCP) server and web application that enables 
 - **Auto-cleanup**: 30-day retention policy with automatic file cleanup
 - **Visual TOC Display**: Hierarchical table of contents with page numbers
 
+## Quick Start (No Installation!)
+
+### Web Application - One Command
+Run the web interface instantly without installing anything:
+
+```bash
+# Basic usage (no OCR)
+uvx --from git+https://github.com/naveenreddy61/anki_nav_mcp_server pdf-web-app
+
+# With OCR support (requires Gemini API key)
+export GOOGLE_API_KEY='your-key-here'
+uvx --from git+https://github.com/naveenreddy61/anki_nav_mcp_server pdf-web-app
+
+# Or in one line
+GOOGLE_API_KEY='your-key' uvx --from git+https://github.com/naveenreddy61/anki_nav_mcp_server pdf-web-app
+
+# Custom port
+uvx --from git+https://github.com/naveenreddy61/anki_nav_mcp_server pdf-web-app --port 9000
+```
+
+Then open http://localhost:8000 in your browser!
+
+### MCP Server - For Claude Desktop
+```bash
+uvx --from git+https://github.com/naveenreddy61/anki_nav_mcp_server pdf-mcp-server
+```
+
+### Getting a Gemini API Key
+OCR features require a free Google Gemini API key:
+1. Visit [Google AI Studio](https://aistudio.google.com/app/apikey)
+2. Create or select a project
+3. Click "Create API Key"
+4. Set environment variable: `export GOOGLE_API_KEY='your-key-here'`
+
+**Note**: Basic PDF operations (TOC, page extraction, image conversion) work without an API key. Only OCR requires it.
+
 ## Prerequisites
 
 - **Python 3.12+**: Required for running the server

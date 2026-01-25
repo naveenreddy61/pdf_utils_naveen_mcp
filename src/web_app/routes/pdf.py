@@ -6,12 +6,12 @@ import zipfile
 import io
 from fasthtml.common import *
 from starlette.responses import StreamingResponse
-from config import UPLOAD_DIR, MIN_DPI, MAX_DPI, DEFAULT_DPI
-from src.web_app.core.database import get_file_info
-from src.web_app.core.utils import count_tokens
-from src.web_app.services import pdf_service
-from src.web_app.ui.components import error_message, toc_display, image_extraction_gallery, ocr_result_display
-from src.web_app.services import ocr_service
+from pdf_utils.config import UPLOAD_DIR, MIN_DPI, MAX_DPI, DEFAULT_DPI
+from web_app.core.database import get_file_info
+from web_app.core.utils import count_tokens
+from web_app.services import pdf_service
+from web_app.ui.components import error_message, toc_display, image_extraction_gallery, ocr_result_display
+from web_app.services import ocr_service
 
 
 def setup_routes(app, rt):

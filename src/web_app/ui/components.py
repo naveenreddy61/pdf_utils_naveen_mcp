@@ -1,7 +1,7 @@
 """UI components for the web application."""
 
 from fasthtml.common import *
-from config import MAX_FILE_SIZE_MB
+from pdf_utils.config import MAX_FILE_SIZE_MB
 
 
 def upload_form():
