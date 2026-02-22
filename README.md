@@ -1,401 +1,512 @@
-# PDF MCP Server & Web Application
+# PDF & Image Processing Web Application
 
-A powerful Model Context Protocol (MCP) server and web application that enables AI assistants like Claude to interact with PDF documents using PyMuPDF. This project provides both:
-
-1. **MCP Server**: API tools for AI assistants to process PDFs programmatically
-2. **FastHTML Web App**: User-friendly web interface for PDF processing
+A powerful, browser-based application for processing PDF documents and images with AI-powered OCR. Built with FastHTML and powered by PyMuPDF and Google Gemini, this tool provides an intuitive interface for common PDF operations.
 
 ## Features
 
-### Common Features (MCP Server & Web App)
-- **Table of Contents Extraction**: Extract complete TOC/bookmarks from PDF files
-- **Page Range Extraction**: Extract specific page ranges into new PDF files  
-- **Page to Image Conversion**: Convert PDF pages to high-quality PNG or JPEG images
+### Core PDF Operations
+- **Table of Contents Extraction**: View complete TOC/bookmarks from PDF files in a hierarchical display
+- **Page Range Extraction**: Extract specific page ranges into new PDF files
+- **Page to Image Conversion**: Convert PDF pages to high-quality PNG or JPEG images (72-300 DPI)
 - **Text Extraction**: Extract text from PDF pages with optional Markdown formatting
-- **Robust Error Handling**: Comprehensive error handling for invalid files and ranges
-- **Fast PDF Processing**: Powered by PyMuPDF for efficient document processing
+- **AI-Powered OCR**: Extract text from scanned PDFs and images using Google Gemini 2.5 Flash Lite
 
-### MCP Server Features
-- **Smart File Management**: Files are saved in the same directory as the source with 'mcp_' prefix
-- **Programmatic Access**: AI assistants can process PDFs through natural language
+### Image Processing
+- **Multi-Format Support**: Upload and process JPG, PNG, WEBP images
+- **Smart Image Extraction**: Automatically extract and filter images from PDFs
+- **Image OCR**: Perform OCR on standalone image files
+- **Batch Processing**: Process multiple pages or images efficiently
 
-### Web Application Features
+### User Experience
 - **Drag-and-Drop Upload**: Easy file uploading with automatic processing
-- **Interactive UI**: Clean, responsive interface built with FastHTML
-- **Real-time Processing**: Instant feedback with loading indicators
-- **Copy to Clipboard**: One-click text copying for extracted content
-- **Download Results**: Download extracted pages, images, and text files
+- **Interactive UI**: Clean, responsive interface with real-time feedback
+- **Copy to Clipboard**: One-click copying for extracted text
+- **Download Results**: Download processed PDFs, images, and text files
 - **File Deduplication**: Automatic detection and reuse of previously uploaded files
-- **Auto-cleanup**: 30-day retention policy with automatic file cleanup
-- **Visual TOC Display**: Hierarchical table of contents with page numbers
+- **Auto-Cleanup**: 30-day retention policy with automatic file cleanup
+- **Progress Indicators**: Real-time feedback during processing
 
-## Prerequisites
+### Advanced Features
+- **Async OCR Processing**: Fast, concurrent API requests with rate limiting
+- **Intelligent Caching**: SQLite-based cache reduces API costs by ~24%
+- **Deterministic Cache Keys**: Stable caching based on file metadata
+- **Token Tracking**: Monitor API usage and costs
+- **Error Resilience**: Automatic fallback to PyMuPDF extraction
 
-- **Python 3.12+**: Required for running the server
-- **uv**: Recommended for dependency management (install with `pip install uv`)
+## Quick Start (No Installation!)
+
+Run the web application instantly without installing anything:
+
+```bash
+# Basic usage (PDF operations work without API key)
+uvx --from git+https://github.com/naveenreddy61/anki_nav_mcp_server pdf-web-app
+
+# With OCR support (requires Gemini API key)
+export GOOGLE_API_KEY='your-key-here'
+uvx --from git+https://github.com/naveenreddy61/anki_nav_mcp_server pdf-web-app
+
+# Or in one line
+GOOGLE_API_KEY='your-key' uvx --from git+https://github.com/naveenreddy61/anki_nav_mcp_server pdf-web-app
+
+# Custom port
+uvx --from git+https://github.com/naveenreddy61/anki_nav_mcp_server pdf-web-app --port 9000
+
+# Custom host (default: 0.0.0.0)
+uvx --from git+https://github.com/naveenreddy61/anki_nav_mcp_server pdf-web-app --host 127.0.0.1
+```
+
+Then open http://localhost:8000 in your browser!
+
+**Note**: Basic PDF operations (TOC, page extraction, image conversion) work without an API key. Only OCR requires it.
+
+## Getting a Gemini API Key
+
+OCR features require a free Google Gemini API key:
+
+1. Visit [Google AI Studio](https://aistudio.google.com/app/apikey)
+2. Sign in with your Google account
+3. Create or select a project
+4. Click "Create API Key"
+5. Copy the API key
+
+**Setting the API Key:**
+
+```bash
+# For current session
+export GOOGLE_API_KEY='your-key-here'
+
+# For persistent setup (add to ~/.bashrc or ~/.zshrc)
+echo 'export GOOGLE_API_KEY="your-key-here"' >> ~/.bashrc
+source ~/.bashrc
+```
+
+**Alternative environment variable:**
+```bash
+export GEMINI_API_KEY='your-key-here'  # Also supported
+```
 
 ## Installation
 
-### For Development
+### Prerequisites
 
-1. **Clone the repository**:
-   ```bash
-   git clone https://github.com/naveenreddy61/pdf_utils_naveen_mcp_server.git
-   cd pdf_utils_naveen_mcp_server
-   ```
+- **Python 3.12+**: Required for running the application
+- **uv**: Recommended for dependency management
 
-2. **Install dependencies**:
-   ```bash
-   uv sync
-   ```
-
-3. **Test the MCP server**:
-   ```bash
-   uv run pdf-mcp-server
-   ```
-
-4. **Test the web application**:
-   ```bash
-   uv run python app.py
-   # Then open http://localhost:8000 in your browser
-   ```
-
-### For Production
-
-Install directly from the repository:
+Install uv:
 ```bash
-pip install git+https://github.com/naveenreddy61/pdf_utils_naveen_mcp_server.git
+# macOS/Linux
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Windows
+powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
+
+# Or with pip
+pip install uv
 ```
 
-## Claude Desktop Configuration
+### Option 1: Quick Install (Recommended)
 
-To use this MCP server with Claude Desktop, you need to add it to your Claude Desktop configuration file.
+Install directly from GitHub:
 
-### Configuration File Location
-
-The configuration file is located at:
-
-- **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
-- **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
-- **Linux**: `~/.config/Claude/claude_desktop_config.json`
-
-### Setup Instructions
-
-1. **Open Claude Desktop Settings**:
-   - Go to Settings → Developer → Edit Config
-   - This will create and open `claude_desktop_config.json`
-
-2. **Add the PDF MCP Server configuration**:
-
-   **Option A: Using uv (recommended)**
-   ```json
-   {
-     "mcpServers": {
-       "pdf-tools": {
-         "command": "uv",
-         "args": [
-           "run", 
-           "--directory", 
-           "/path/to/pdf-mcp-server", 
-           "pdf-mcp-server"
-         ],
-         "env": {}
-       }
-     }
-   }
-   ```
-
-   **Option B: Using global installation**
-   ```json
-   {
-     "mcpServers": {
-       "pdf-tools": {
-         "command": "pdf-mcp-server",
-         "args": [],
-         "env": {}
-       }
-     }
-   }
-   ```
-
-   **Option C: Using uvx from GitHub (no local setup needed)**
-   ```json
-   {
-     "mcpServers": {
-       "pdf-tools": {
-         "command": "uvx",
-         "args": [
-           "--from", 
-           "git+https://github.com/naveenreddy61/pdf_utils_naveen_mcp_server",
-           "pdf-mcp-server"
-         ]
-       }
-     }
-   }
-   ```
-
-   **Option D: Using uvx from local repository**
-   ```json
-   {
-     "mcpServers": {
-       "pdf-tools": {
-         "command": "uvx",
-         "args": [
-           "--from", 
-           "/path/to/pdf_utils_naveen_mcp_server",
-           "pdf-mcp-server"
-         ]
-       }
-     }
-   }
-   ```
-
-   **Option E: Using Python directly**
-   ```json
-   {
-     "mcpServers": {
-       "pdf-tools": {
-         "command": "python",
-         "args": [
-           "-m", 
-           "pdf_mcp_server"
-         ],
-         "env": {
-           "PYTHONPATH": "/path/to/pdf-mcp-server/src"
-         }
-       }
-     }
-   }
-   ```
-
-3. **Choose the best option for your setup**:
-   - **Option A (uv)**: Best if you have the repository locally and want to use uv's project management
-   - **Option B (global)**: Best if you've installed the package globally with pip
-   - **Option C (uvx + GitHub)**: **Recommended for easy setup** - no cloning or local setup needed! Perfect for Windows users.
-   - **Option D (uvx + local)**: Best if you have the repo cloned locally but don't want to manage virtual environments
-   - **Option E (Python)**: Advanced users who want full control over the Python environment
-
-4. **Benefits of uvx options (C & D)**:
-   - **No virtual environment management**: uvx creates temporary isolated environments automatically
-   - **No dependency installation**: uvx handles all dependencies transparently  
-   - **No uv sync required**: Skip the manual environment setup step
-   - **Perfect for testing**: Great for trying out the server without commitment
-   - **Cross-platform**: Works consistently on Windows, macOS, and Linux
-
-5. **Update paths if needed**: 
-   - For local options (A, D, E): Replace `/path/to/pdf_utils_naveen_mcp_server` with your actual repository path
-   - For GitHub option (C): No path changes needed!
-
-6. **Restart Claude Desktop**: Close and reopen Claude Desktop for the changes to take effect.
-
-7. **Verify the setup**: Look for the MCP tools icon in Claude Desktop, indicating that your tools are available.
-
-### Testing the Integration
-
-Once configured, you can test the integration by asking Claude:
-
-```
-"Can you get the table of contents from the PDF at /path/to/sample.pdf?"
+```bash
+pip install git+https://github.com/naveenreddy61/anki_nav_mcp_server.git
 ```
 
-```
-"Please extract pages 1-5 from /path/to/document.pdf"
-```
-
-```
-"Convert pages 1-3 of /path/to/document.pdf to PNG images at 300 DPI"
+Then run:
+```bash
+pdf-web-app
 ```
 
+### Option 2: Development Setup
+
+Clone and run locally:
+
+```bash
+# Clone the repository
+git clone https://github.com/naveenreddy61/anki_nav_mcp_server.git
+cd anki_nav_mcp_server
+
+# Install dependencies
+uv sync
+
+# Run the application
+uv run app.py
 ```
-"Extract the text from pages 10-15 of /path/to/manual.pdf as Markdown"
+
+### Option 3: uvx (No Installation)
+
+Run directly without installation (see Quick Start above).
+
+## Usage
+
+### Starting the Application
+
+**After installation:**
+```bash
+pdf-web-app
 ```
 
-## Web Application Usage
+**From local clone:**
+```bash
+uv run app.py
+```
 
-The FastHTML web application provides an intuitive interface for PDF processing without needing to use command-line tools.
+**With uvx:**
+```bash
+uvx --from git+https://github.com/naveenreddy61/anki_nav_mcp_server pdf-web-app
+```
 
-### Running the Web Application
-
-1. **Start the server**:
-   ```bash
-   # Using uv (recommended)
-   uv run python app.py
-   
-   # Or using Python directly
-   python app.py
-   ```
-
-2. **Access the application**:
-   Open your browser and navigate to `http://localhost:8000`
+The application will start on http://localhost:8000 (or your specified port).
 
 ### Web Interface Guide
 
-1. **Upload a PDF**:
-   - Click "Choose File" or drag and drop a PDF file
-   - The file will upload automatically when selected
-   - Maximum file size: 100MB
-   - Files are retained for 30 days
+#### 1. Upload Files
 
-2. **Available Operations**:
-   After uploading, you'll see four operation buttons:
+- Click "Choose File" or drag and drop a file
+- Supported formats: PDF, JPG, JPEG, PNG, WEBP
+- Maximum file size: 100MB
+- Files are retained for 30 days
 
-   **Extract Table of Contents**:
-   - Click to view the PDF's bookmarks/TOC
-   - Displays hierarchically with indentation
-   - Shows page numbers for each entry
+#### 2. Extract Table of Contents
 
-   **Extract Pages**:
-   - Enter start and end page numbers
-   - Creates a new PDF with selected pages
-   - Download the extracted PDF file
+**For PDFs with bookmarks:**
+- Click "Extract Table of Contents" button
+- View hierarchical TOC with page numbers
+- Displays nested structure with indentation
 
-   **Convert to Images**:
-   - Select page range to convert
-   - Choose DPI (72-300, default: 150)
-   - Select format (PNG or JPG)
-   - View and download generated images
+**Use cases:**
+- Navigate large documents
+- Understand document structure
+- Find specific sections quickly
 
-   **Extract Text**:
-   - Select page range for text extraction
-   - Choose plain text or Markdown format
-   - Preview the full extracted text
-   - Copy to clipboard with one click
-   - Download as .txt file
+#### 3. Extract Pages
 
-### Web Application Features
+**Create a new PDF from selected pages:**
+- Click "Extract Pages" button
+- Enter start page number (e.g., 5)
+- Enter end page number (e.g., 10)
+- Click "Extract" to create new PDF
+- Download the extracted file
 
-- **File Deduplication**: If you upload the same PDF twice, the app recognizes it and uses the cached version
-- **Persistent Storage**: Uploaded files and processed results are stored in the `uploads/` directory
-- **Auto-cleanup**: Files older than 30 days are automatically removed
-- **Real-time Feedback**: Loading indicators show processing status
-- **Error Handling**: Clear error messages for invalid operations
+**Use cases:**
+- Share specific chapters
+- Split large documents
+- Extract relevant sections
 
-### Example Workflow
+#### 4. Convert to Images
 
-1. Upload a PDF manual
-2. Extract the table of contents to see document structure
-3. Extract specific chapters as separate PDFs
-4. Convert diagrams to PNG images for documentation
-5. Extract text content for analysis or copying
+**Convert PDF pages to image files:**
+- Click "Convert to Images" button
+- Enter start and end page numbers
+- Select DPI (resolution):
+  - 72 DPI: Screen viewing
+  - 150 DPI: General use (default)
+  - 300 DPI: High quality printing
+- Choose format: PNG or JPG
+- View thumbnails and download individual images or all as ZIP
 
-## MCP Server Usage
+**Use cases:**
+- Extract diagrams and charts
+- Create presentation slides
+- Share visual content
+- Archive important pages
 
-### Available Tools
+#### 5. Extract Text (with OCR)
 
-#### `get_table_of_contents(path: str)`
+**Extract text from PDFs and images:**
+- Click "Extract Text" button
+- Enter page range (for PDFs)
+- Text is extracted using AI-powered OCR
+- Preview the full text in the browser
+- Copy to clipboard with one click
+- Download as .txt file
+- View token usage statistics
 
-Extracts the table of contents (bookmarks) from a PDF file.
+**Use cases:**
+- Convert scanned documents to searchable text
+- Extract text from images
+- Copy content for reuse
+- Archive document content
 
-**Parameters:**
-- `path` (str): Absolute path to the PDF file
+**OCR Features:**
+- Processes one page at a time for reliability
+- Concurrent processing for speed (20 pages at once)
+- Intelligent caching reduces API costs
+- Token tracking for cost monitoring
+- Automatic retry on failures
 
-**Returns:**
-- List of lists: `[[level, title, page_number], ...]`
-- Example: `[[1, "Introduction", 1], [2, "Chapter 1", 5], [3, "Section 1.1", 7]]`
+### Example Workflows
 
-**Example Usage in Claude Desktop:**
-```
-"Get the table of contents for /Users/john/Documents/manual.pdf"
-```
+**Workflow 1: Extract Chapter from Book**
+1. Upload PDF book
+2. Extract TOC to find chapter location
+3. Note chapter start/end pages
+4. Extract pages as new PDF
+5. Download chapter PDF
 
-#### `get_pages_from_pdf(pdf_path: str, start_page: int, end_page: int)`
+**Workflow 2: Digitize Scanned Documents**
+1. Upload scanned PDF or image
+2. Use Extract Text with OCR
+3. Review extracted text
+4. Copy to clipboard or download
+5. Edit in your preferred text editor
 
-Extracts a range of pages from a PDF and creates a new PDF file.
+**Workflow 3: Create Presentation from PDF**
+1. Upload source PDF
+2. Convert specific pages to images (300 DPI, PNG)
+3. Download images
+4. Insert into presentation software
 
-**Parameters:**
-- `pdf_path` (str): Absolute path to the source PDF
-- `start_page` (int): Starting page number (1-based, inclusive)
-- `end_page` (int): Ending page number (1-based, inclusive)
+**Workflow 4: Archive Important Documents**
+1. Upload PDF document
+2. Extract text for searchability
+3. Convert key pages to images
+4. Store both text and images
 
-**Returns:**
-- str: Absolute path to the newly created PDF file (saved with 'mcp_' prefix)
+## Configuration
 
-**Example Usage in Claude Desktop:**
-```
-"Extract pages 10-15 from /Users/john/Documents/report.pdf"
-```
+### Application Settings
 
-#### `get_pages_as_images(pdf_path: str, start_page: int, end_page: int, dpi: int = 150, image_format: str = "png")`
+Located in `src/pdf_utils/config.py`:
 
-Converts a range of pages from a PDF to image files.
-
-**Parameters:**
-- `pdf_path` (str): Absolute path to the source PDF
-- `start_page` (int): Starting page number (1-based, inclusive)
-- `end_page` (int): Ending page number (1-based, inclusive)
-- `dpi` (int, optional): Resolution in dots per inch (default: 150)
-- `image_format` (str, optional): Output format - "png" or "jpg" (default: "png")
-
-**Returns:**
-- List[str]: List of absolute paths to the created image files
-
-**Example Usage in Claude Desktop:**
-```
-"Convert pages 1-5 of /Users/john/Documents/presentation.pdf to PNG images at 300 DPI"
-```
-
-#### `extract_text_from_pages(pdf_path: str, start_page: int, end_page: int, markdown: bool = True)`
-
-Extracts text from a range of pages in a PDF.
-
-**Parameters:**
-- `pdf_path` (str): Absolute path to the PDF file
-- `start_page` (int): Starting page number (1-based, inclusive)
-- `end_page` (int): Ending page number (1-based, inclusive)
-- `markdown` (bool, optional): Return text in Markdown format (default: True)
-
-**Returns:**
-- str: Extracted text, optionally formatted as Markdown
-
-**Example Usage in Claude Desktop:**
-```
-"Extract text from pages 20-25 of /Users/john/Documents/ebook.pdf as Markdown"
+#### File Handling
+```python
+FILE_RETENTION_DAYS = 30      # Auto-cleanup period
+MAX_FILE_SIZE_MB = 100         # Maximum upload size
+UPLOAD_DIR = Path("uploads")   # Storage directory
 ```
 
-### Standalone Usage
+#### Image Processing
+```python
+DEFAULT_DPI = 150              # Default image resolution
+MIN_DPI = 72                   # Minimum DPI
+MAX_DPI = 300                  # Maximum DPI
+IMAGE_COMPRESSION_QUALITY = 85 # JPEG quality (1-100)
+MIN_IMAGE_SIZE = 25            # Min width/height in pixels
+MAX_IMAGES_PER_PAGE = 12       # Max images extracted per page
+```
 
-You can also run the server directly for testing:
+#### OCR Settings
+```python
+OCR_MODEL = "gemini-2.5-flash-lite"
+OCR_TEMPERATURE = 0.1          # Low for consistent output
+OCR_TIMEOUT = 60               # Per-page timeout (seconds)
+OCR_MAX_TOKENS = 4096          # Per-page token limit
+OCR_CONCURRENT_REQUESTS = 20   # Parallel API requests
+OCR_MAX_RETRIES = 3            # Retry failed pages
+```
+
+#### Cache Settings
+```python
+OCR_CACHE_RETENTION_DAYS = 14  # Cache cleanup period
+OCR_CACHE_DB_PATH = Path("data/ocr_cache.db")
+```
+
+### Environment Variables
 
 ```bash
-# Start the server
-uv run pdf-mcp-server
+# Required for OCR
+GOOGLE_API_KEY=your_key_here
+# or
+GEMINI_API_KEY=your_key_here
 
-# The server will listen for MCP requests via STDIO
+# Optional server configuration
+SERVER_PORT=8000  # Override default port
 ```
+
+### CLI Options
+
+```bash
+pdf-web-app --help
+
+Options:
+  -p, --port PORT         Port to run server on (default: 8000)
+  --host HOST            Host to bind to (default: 0.0.0.0)
+  --no-api-key-check     Skip API key validation (for testing)
+  -h, --help             Show help message
+```
+
+## Performance & Costs
+
+### OCR Processing Speed
+
+- **With cache hit**: ~0.01s per page
+- **Without cache (first time)**: ~3-6s per page
+- **Concurrent processing**: 20 pages processed simultaneously
+- **Typical 10-page document**: 4-5 seconds (first run), <1 second (cached)
+
+### API Costs (Google Gemini 2.5 Flash Lite)
+
+**Pricing** (as of 2025):
+- Input: $0.00001875/1K tokens
+- Output: $0.000075/1K tokens
+
+**Typical Usage:**
+- Single page PDF: ~1,000-2,000 input tokens, ~500-1,000 output tokens
+- Cost per page: ~$0.0001-0.0003 (less than $0.0003 per page)
+- 100 pages: ~$0.01-0.03
+
+**With Caching:**
+- Repeated documents: ~$0 (served from cache)
+- Typical savings: 24% token reduction
+- Cache hit rate: ~100% for repeated documents
+
+### Storage
+
+- **Uploaded files**: ~same as original file size
+- **Extracted PDFs**: ~proportional to extracted pages
+- **Images**: ~500KB-2MB per page (depends on DPI)
+- **OCR cache**: ~1KB per cached page
+- **Auto-cleanup**: Files older than 30 days removed
+
+## Troubleshooting
+
+### Installation Issues
+
+**Problem**: `uvx` command not found
+**Solution**:
+```bash
+# Install uv first
+curl -LsSf https://astral.sh/uv/install.sh | sh
+# or
+pip install uv
+```
+
+**Problem**: Python version too old
+**Solution**: Install Python 3.12 or later
+```bash
+# Check version
+python --version
+
+# Download from https://www.python.org/downloads/
+```
+
+### Application Issues
+
+**Problem**: Port 8000 already in use
+**Solution**:
+```bash
+# Use a different port
+pdf-web-app --port 9000
+```
+
+**Problem**: Upload fails with "File too large"
+**Solution**:
+- File must be under 100MB
+- Or modify `MAX_FILE_SIZE_MB` in config.py
+
+**Problem**: "No API key found" warning
+**Solution**:
+```bash
+# Set environment variable
+export GOOGLE_API_KEY='your-key-here'
+
+# Or use --no-api-key-check for testing (OCR won't work)
+pdf-web-app --no-api-key-check
+```
+
+### OCR Issues
+
+**Problem**: OCR extraction fails or returns errors
+**Solutions**:
+- Verify API key is valid
+- Check internet connection
+- Ensure API quota not exceeded
+- Check error message for specific issue
+
+**Problem**: OCR is slow
+**Solutions**:
+- First run is slower (no cache)
+- Subsequent runs use cache (~100x faster)
+- Reduce concurrent requests in config if hitting rate limits
+- Use lower DPI for faster image processing
+
+**Problem**: High API costs
+**Solutions**:
+- Cache is automatically used (check cache hit rate in logs)
+- Increase cache retention days
+- Process only necessary pages
+- Use PyMuPDF fallback for searchable PDFs (no API call)
+
+### File Processing Issues
+
+**Problem**: "Failed to extract TOC"
+**Cause**: PDF has no embedded bookmarks
+**Solution**: Not all PDFs have TOC - this is normal
+
+**Problem**: Downloaded files show 404 error
+**Solutions**:
+- Ensure `uploads/` directory exists
+- Check file permissions
+- Verify files weren't auto-cleaned (>30 days old)
+
+**Problem**: Images appear blurry
+**Solution**: Increase DPI (try 300 for high quality)
+
+**Problem**: "Copy to Clipboard" fails
+**Solutions**:
+- Use HTTPS or localhost (security requirement)
+- Try a modern browser (Chrome, Firefox, Edge, Safari)
+- Check browser permissions for clipboard access
+
+### Database Issues
+
+**Problem**: Database errors on startup
+**Solutions**:
+```bash
+# Remove and recreate databases
+rm -f data/pdf_files.db data/ocr_cache.db
+# Restart application (databases recreate automatically)
+```
+
+**Problem**: Disk space full
+**Solutions**:
+- Clean old uploads manually: `rm -rf uploads/*`
+- Reduce retention days in config
+- Clean cache: `rm -f data/ocr_cache.db`
 
 ## Development
 
 ### Project Structure
 
 ```
-pdf-mcp-server/
+pdf-utils-web/
 ├── src/
-│   └── pdf_mcp_server/
-│       ├── __init__.py         # Package entry point
-│       ├── server.py           # FastMCP server and tool registration
-│       └── tools.py            # Core PDF processing logic
-├── app.py                      # FastHTML web application
-├── uploads/                    # Directory for uploaded files (auto-created)
-├── pdf_files.db               # SQLite database for file tracking
+│   ├── pdf_utils/              # Shared configuration
+│   │   ├── __init__.py
+│   │   └── config.py
+│   └── web_app/                # Web application
+│       ├── cli.py              # CLI entry point
+│       ├── app.py              # FastHTML app
+│       ├── core/               # Core utilities
+│       │   ├── database.py     # File tracking
+│       │   └── utils.py        # Helper functions
+│       ├── services/           # Business logic
+│       │   ├── pdf_service.py  # PDF operations
+│       │   ├── ocr_service.py  # OCR processing
+│       │   ├── ocr_cache.py    # Cache management
+│       │   └── cleanup.py      # File cleanup
+│       ├── routes/             # HTTP routes
+│       │   ├── main.py         # Upload and home
+│       │   ├── pdf.py          # PDF operations
+│       │   └── api.py          # API endpoints
+│       ├── ui/                 # UI components
+│       │   ├── components.py   # Reusable elements
+│       │   └── styles.py       # CSS styles
+│       └── prompts/            # LLM prompts
+│           ├── ocr_prompt.txt
+│           ├── ocr_prompt_pdf.txt
+│           └── math_detection_prompt.txt
+├── data/                       # Runtime data
+│   ├── pdf_files.db           # File metadata
+│   └── ocr_cache.db           # OCR results cache
+├── uploads/                    # Uploaded files
+├── tests/                      # Test suite
+├── app.py                      # Local dev entry point
 ├── pyproject.toml              # Project configuration
-├── CLAUDE.md                   # Development guidance
-└── README.md                   # This file
+├── README.md                   # This file
+└── CLAUDE.md                   # Development guide
 ```
-
-### Adding New Features
-
-#### For MCP Server:
-1. **Implement the core logic** in `PdfTools` class (`src/pdf_mcp_server/tools.py`)
-2. **Register the tool** in `server.py` using the `@mcp.tool` decorator
-3. **Add documentation** to this README and `CLAUDE.md`
-4. **Test the integration** with Claude Desktop
-
-#### For Web Application:
-1. **Add the operation button** in the upload result section of `app.py`
-2. **Create a form route** for parameter input (if needed)
-3. **Implement the processing route** that calls the PDF tools
-4. **Add result display logic** with appropriate UI components
-5. **Test the feature** through the web interface
 
 ### Development Commands
 
@@ -403,154 +514,122 @@ pdf-mcp-server/
 # Install dependencies
 uv sync
 
-# Run the MCP server
-uv run pdf-mcp-server
+# Run web application
+uv run app.py
 
-# Run the web application
-uv run python app.py
+# Or use the CLI entry point
+uv run python -m web_app.cli
 
-# Run tests (if available)
-uv run pytest
+# Run tests
+uv run python tests/test_ocr_service.py
 
-# Format code (if configured)
-uv run black src/
-uv run isort src/
-
-# Add a new dependency
+# Add a dependency
 uv add package_name
+
+# Build distribution
+uv build
+
+# Inspect wheel contents
+unzip -l dist/*.whl
 ```
 
-## Error Handling
+### Adding New Features
 
-The server provides comprehensive error handling for common scenarios:
+#### Add a New PDF Operation
 
-### FileNotFoundError
-**Cause**: The specified PDF file path does not exist  
-**Solution**: Verify the file path is absolute and the file exists
+1. **Implement in `pdf_service.py`**:
+```python
+def new_operation(pdf_path: Path, param: str) -> Result:
+    """New PDF operation."""
+    doc = pymupdf.open(pdf_path)
+    # ... implementation
+    doc.close()
+    return result
+```
 
-### ValueError: Invalid page range
-**Cause**: Page numbers are out of bounds or start_page > end_page  
-**Example**: Requesting pages 10-15 from a 5-page document  
-**Solution**: Check document page count first
+2. **Add route in `routes/pdf.py`**:
+```python
+@rt('/process/new-operation/{file_hash}')
+def process_new_operation(file_hash: str):
+    # Handle form, call service, return result
+    pass
+```
 
-### ValueError: PDF has no table of contents
-**Cause**: The PDF file doesn't contain embedded bookmarks  
-**Solution**: Not all PDFs have TOC data - this is expected for some files
+3. **Add button in `ui/components.py`**:
+```python
+def operation_buttons():
+    return Div(
+        # ... existing buttons
+        Button("New Operation", hx_get=f"/new-operation-form/{file_hash}")
+    )
+```
 
-### Permission Errors
-**Cause**: Insufficient permissions to read the PDF or write temporary files  
-**Solution**: Check file permissions and temporary directory access
-
-## Troubleshooting
-
-### Web Application Issues
-
-**Problem**: Port 8000 already in use  
-**Solutions:**
-- Stop any other service using port 8000
-- Or modify the port in `app.py`: `serve(port=8001)`
-
-**Problem**: Upload fails or shows "No file uploaded"  
-**Solutions:**
-- Ensure the file is a valid PDF
-- Check file size is under 100MB
-- Verify the `uploads/` directory has write permissions
-
-**Problem**: Downloaded files show 404 error  
-**Solutions:**
-- Check that the `uploads/` directory exists
-- Verify file permissions in the uploads directory
-- Ensure the web server has read access to generated files
-
-**Problem**: "Copy to Clipboard" fails  
-**Solutions:**
-- Ensure you're using HTTPS or localhost (clipboard API requirement)
-- Check browser console for security errors
-- Try using a modern browser (Chrome, Firefox, Edge)
-
-### Claude Desktop Issues
-
-**Problem**: MCP tools not appearing in Claude Desktop  
-**Solutions:**
-- Verify the configuration file syntax is valid JSON
-- Check that the file paths in the configuration exist
-- Restart Claude Desktop after configuration changes
-- Look for error messages in Claude Desktop's developer console
-
-**Problem**: "Command not found" errors  
-**Solutions:**
-- Ensure `uv` or `uvx` is installed and in your system PATH
-- Use absolute paths in the configuration
-- Verify the project directory path is correct
-
-**Problem**: uvx GitHub option (Option C) fails  
-**Solutions:**
-- Check your internet connection for GitHub access
-- Verify the repository URL is correct: `git+https://github.com/naveenreddy61/pdf_utils_naveen_mcp_server`
-- Try using a local clone with Option D instead
-- Ensure Git is installed on your system
-
-**Problem**: uvx local option (Option D) fails  
-**Solutions:**
-- Verify the repository path exists and contains `pyproject.toml`
-- Use absolute paths instead of relative paths
-- Check that the console script name `pdf-mcp-server` matches your pyproject.toml
-- Ensure the repository has been cloned (not just downloaded as ZIP)
-
-### Server Issues
-
-**Problem**: "Failed to get TOC" or "Failed to extract pages"  
-**Solutions:**
-- Ensure the PDF file is not password-protected
-- Check that the file is a valid PDF (not corrupted)
-- Verify file permissions allow reading
-
-**Problem**: Temporary file issues  
-**Solutions:**
-- Check available disk space
-- Verify write permissions to system temp directory
-- On Windows, check that temp directory path doesn't contain spaces
-
-### Performance Considerations
-
-- Large PDF files may take longer to process
-- Page extraction creates temporary files - ensure adequate disk space
-- For high-volume usage, consider implementing cleanup of old temporary files
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feature-name`
-3. Make your changes and add tests
-4. Ensure code follows the existing style
-5. Submit a pull request
+4. **Test the feature** via browser
 
 ### Code Style
 
 - Follow PEP 8 for Python code
-- Use type hints for all function parameters and returns
+- Use type hints for function parameters and returns
 - Add docstrings for all public functions
 - Keep functions focused and single-purpose
+- Use async/await for I/O-bound operations
+
+### Testing
+
+```bash
+# Test OCR service
+uv run python tests/test_ocr_service.py
+
+# Test with sample PDFs
+uv run python create_test_pdf.py
+
+# Manual testing
+uv run app.py
+# Upload files via http://localhost:8000
+```
+
+## Contributing
+
+Contributions are welcome! Please follow these steps:
+
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feature-name`
+3. Make your changes
+4. Add tests if applicable
+5. Ensure code follows the style guide
+6. Update documentation
+7. Submit a pull request
+
+### Pull Request Guidelines
+
+- Provide clear description of changes
+- Include screenshots for UI changes
+- Update README if adding features
+- Test thoroughly before submitting
+- Keep PRs focused on single feature/fix
 
 ## License
 
-This project is provided as-is. See the LICENSE file for details.
+MIT License - see LICENSE file for details.
 
 ## Acknowledgments
 
-- [FastMCP](https://github.com/jlowin/fastmcp) - Excellent MCP framework for Python
 - [FastHTML](https://github.com/AnswerDotAI/fasthtml) - Modern Python web framework
 - [PyMuPDF](https://pymupdf.readthedocs.io/) - Powerful PDF processing library
 - [PyMuPDF4LLM](https://github.com/pymupdf/PyMuPDF4LLM) - PDF to Markdown conversion
-- [Model Context Protocol](https://modelcontextprotocol.io/) - Protocol specification
-- [Anthropic Claude](https://claude.ai/) - AI assistant integration
+- [Google Gemini](https://ai.google.dev/) - AI-powered OCR
+- [uv](https://github.com/astral-sh/uv) - Fast Python package manager
 
 ## Support
 
 For issues and questions:
 1. Check the troubleshooting section above
-2. Review the error messages for specific guidance
-3. Create an issue in the repository with detailed information about your setup and the problem
+2. Review existing GitHub issues
+3. Create a new issue with:
+   - Detailed problem description
+   - Steps to reproduce
+   - Environment information (OS, Python version)
+   - Error messages or logs
 
 ---
 
@@ -604,3 +683,7 @@ Restart `uv run app.py`. The upload form will automatically switch to the GCS di
 ---
 
 **Note**: This server is designed to work with absolute file paths for security and reliability. Always provide full paths when working with PDF files.
+
+---
+
+**Made with FastHTML and PyMuPDF** | **Powered by Google Gemini**

@@ -14,10 +14,10 @@ from dotenv import load_dotenv
 from google import genai
 from google.genai import types
 
-from config import (
-    OCR_MODEL, 
-    OCR_TEMPERATURE, 
-    OCR_TIMEOUT, 
+from pdf_utils.config import (
+    OCR_MODEL,
+    OCR_TEMPERATURE,
+    OCR_TIMEOUT,
     OCR_MAX_TOKENS,
     OCR_CONCURRENT_REQUESTS,
     OCR_MAX_RETRIES,
@@ -34,7 +34,13 @@ from .ocr_cache import (
 
 # Load environment variables and initialize the GenAI client
 load_dotenv()
-client = genai.Client()
+
+# Validate API key before creating client
+api_key = os.getenv('GOOGLE_API_KEY') or os.getenv('GEMINI_API_KEY')
+if api_key:
+    client = genai.Client()
+else:
+    client = None
 
 
 def load_ocr_prompt() -> str:
@@ -354,16 +360,24 @@ async def process_document_async(
 ) -> Dict:
     """
     Process a document with async chunked processing, native PDF handling, caching, and retries.
-    
+
     Args:
         pdf_path: Path to PDF file
         start_page: Starting page number (1-based)
         end_page: Ending page number (1-based)
         progress_callback: Optional callback for progress updates
-        
+
     Returns:
         Dictionary with processing results and statistics
     """
+    # Validate client exists
+    if client is None:
+        raise EnvironmentError(
+            "OCR requires GOOGLE_API_KEY or GEMINI_API_KEY environment variable.\n"
+            "Get your key from: https://aistudio.google.com/app/apikey\n"
+            "Then set: export GOOGLE_API_KEY='your-key-here'"
+        )
+
     # Initialize cache database
     await init_cache_database()
     
@@ -546,6 +560,14 @@ async def ocr_image_file(
     Returns:
         Dictionary with processing results and statistics
     """
+    # Validate client exists
+    if client is None:
+        raise EnvironmentError(
+            "OCR requires GOOGLE_API_KEY or GEMINI_API_KEY environment variable.\n"
+            "Get your key from: https://aistudio.google.com/app/apikey\n"
+            "Then set: export GOOGLE_API_KEY='your-key-here'"
+        )
+
     # Initialize cache database
     await init_cache_database()
 

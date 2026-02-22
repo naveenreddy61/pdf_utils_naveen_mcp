@@ -1,8 +1,8 @@
 """API routes for the web application."""
 
 from fasthtml.common import *
-from src.web_app.services.cleanup import cleanup_old_files
-from src.web_app.ui.components import success_message, error_message
+from web_app.services.cleanup import cleanup_old_files
+from web_app.ui.components import success_message, error_message
 
 
 def setup_routes(app, rt):

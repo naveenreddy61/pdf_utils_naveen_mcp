@@ -7,8 +7,8 @@ import pymupdf4llm
 import base64
 import io
 from PIL import Image
-from config import (
-    UPLOAD_DIR, IMAGE_COMPRESSION_QUALITY, 
+from pdf_utils.config import (
+    UPLOAD_DIR, IMAGE_COMPRESSION_QUALITY,
     MIN_IMAGE_SIZE, MAX_IMAGES_PER_PAGE
 )
 

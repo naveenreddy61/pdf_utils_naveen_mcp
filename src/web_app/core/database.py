@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from fastlite import database
 from apswutils.db import NotFoundError
-from config import DB_PATH
+from pdf_utils.config import DB_PATH
 
 
 @dataclass

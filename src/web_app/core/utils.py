@@ -5,7 +5,7 @@ import hashlib
 import re
 from pathlib import Path
 import tiktoken
-from config import TOKEN_COUNTING_MODEL
+from pdf_utils.config import TOKEN_COUNTING_MODEL
 
 
 def calculate_file_hash(file_content: bytes) -> str:

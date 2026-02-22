@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Optional, Tuple
 from contextlib import asynccontextmanager
 import aiosqlite
-from config import OCR_CACHE_RETENTION_DAYS, OCR_CACHE_DB_PATH
+from pdf_utils.config import OCR_CACHE_RETENTION_DAYS, OCR_CACHE_DB_PATH
 
 
 def compute_image_hash(base64_image: str) -> str:

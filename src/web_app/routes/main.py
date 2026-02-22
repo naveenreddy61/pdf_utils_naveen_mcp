@@ -5,17 +5,17 @@ from datetime import datetime
 from fasthtml.common import *
 from starlette.requests import Request
 from starlette.responses import JSONResponse
-from config import (
+from pdf_utils.config import (
     UPLOAD_DIR, MAX_FILE_SIZE_BYTES, MAX_FILE_SIZE_MB, ALLOWED_EXTENSIONS,
     GCS_BUCKET_NAME, GCS_CREDENTIALS_FILE, GCS_SIGNED_URL_EXPIRY_MINUTES,
     GCS_DELETE_AFTER_DOWNLOAD,
 )
-from src.web_app.core.database import (
+from web_app.core.database import (
     FileRecord, get_file_info, update_last_accessed, insert_file_record
 )
-from src.web_app.core.utils import calculate_file_hash, sanitize_filename
-from src.web_app.services.pdf_service import get_page_count
-from src.web_app.ui.components import (
+from web_app.core.utils import calculate_file_hash, sanitize_filename
+from web_app.services.pdf_service import get_page_count
+from web_app.ui.components import (
     upload_form, page_with_result, file_info_display,
     operation_buttons, error_message
 )
@@ -173,7 +173,7 @@ def setup_routes(app, rt):
         expected_content_type, _ = type_info
 
         try:
-            from src.web_app.services.gcs_service import generate_upload_signed_url
+            from web_app.services.gcs_service import generate_upload_signed_url
             signed_url, gcs_object_name = await asyncio.to_thread(
                 generate_upload_signed_url,
                 GCS_BUCKET_NAME,
@@ -222,7 +222,7 @@ def setup_routes(app, rt):
         tmp_path = UPLOAD_DIR / f"gcs_tmp_{safe_tmp}"
 
         try:
-            from src.web_app.services.gcs_service import download_from_gcs, delete_from_gcs
+            from web_app.services.gcs_service import download_from_gcs, delete_from_gcs
 
             print(f"Pulling {gcs_object_name} from GCS …")
             await download_from_gcs(GCS_BUCKET_NAME, gcs_object_name, tmp_path, GCS_CREDENTIALS_FILE)
