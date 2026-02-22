@@ -1,23 +1,6 @@
-"""Backward compatibility wrapper for config.py.
+"""Configuration settings for PDF Utilities Web Application."""
 
-This file maintains compatibility for local development.
-When installed as a package, imports come from pdf_utils.config instead.
-
-DEPRECATED: Update your imports to use:
-    from pdf_utils.config import ...
-"""
-
-import warnings
-
-warnings.warn(
-    "Importing from root config.py is deprecated. "
-    "Use 'from pdf_utils.config import ...' instead.",
-    DeprecationWarning,
-    stacklevel=2
-)
-
-# Re-export everything from the package
-from src.pdf_utils.config import *
+from pathlib import Path
 
 # File handling settings
 FILE_RETENTION_DAYS = 30
@@ -65,15 +48,9 @@ OCR_BATCH_TIMEOUT = 300  # Overall timeout for batch processing (seconds)
 OCR_CACHE_RETENTION_DAYS = 14  # Keep cached OCR results for 2 weeks
 OCR_CACHE_DB_PATH = Path("data/ocr_cache.db")  # SQLite DB for caching
 
-# ── Google Cloud Storage (direct browser upload bypass) ──────────────────────
-# Set these to enable GCS-backed uploads that bypass Cloudflare's 100 MB limit.
-# Leave GCS_BUCKET_NAME empty / unset to fall back to local multipart upload.
+# GCS settings for large file upload bypass
 import os as _os
 GCS_BUCKET_NAME: str = _os.getenv("GCS_BUCKET_NAME", "")
-# Path to a service-account JSON key file.  Leave blank to use ADC /
-# GOOGLE_APPLICATION_CREDENTIALS environment variable.
 GCS_CREDENTIALS_FILE: str | None = _os.getenv("GCS_CREDENTIALS_FILE") or None
-# How long the signed upload URL stays valid (browser must start uploading within this window).
 GCS_SIGNED_URL_EXPIRY_MINUTES: int = int(_os.getenv("GCS_SIGNED_URL_EXPIRY_MINUTES", "15"))
-# Delete temp GCS object after the server has pulled it down locally.
 GCS_DELETE_AFTER_DOWNLOAD: bool = _os.getenv("GCS_DELETE_AFTER_DOWNLOAD", "true").lower() == "true"

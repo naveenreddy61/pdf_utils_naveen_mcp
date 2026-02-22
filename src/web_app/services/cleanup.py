@@ -2,8 +2,8 @@
 
 import asyncio
 from datetime import datetime, timedelta
-from config import FILE_RETENTION_DAYS, UPLOAD_DIR
-from src.web_app.core.database import get_old_files, delete_file_record
+from pdf_utils.config import FILE_RETENTION_DAYS, UPLOAD_DIR
+from web_app.core.database import get_old_files, delete_file_record
 
 
 async def cleanup_old_files():

@@ -1,18 +1,165 @@
 """UI components for the web application."""
 
 from fasthtml.common import *
-from config import MAX_FILE_SIZE_MB
+from pdf_utils.config import MAX_FILE_SIZE_MB, GCS_BUCKET_NAME
 
 
 def upload_form():
-    """Return the upload form component."""
+    """Return the upload form component.
+
+    When GCS is configured the form uses a JavaScript-driven direct-upload flow
+    that bypasses Cloudflare entirely.  Otherwise it falls back to a plain
+    multipart POST to /upload.
+    """
+    if GCS_BUCKET_NAME:
+        return _gcs_upload_form()
+    return _local_upload_form()
+
+
+def _local_upload_form():
+    """Classic multipart upload (no GCS)."""
     return Form(
         Input(type="file", name="pdf_file", accept=".pdf,.jpg,.jpeg,.png,.webp",
               onchange="this.form.submit()",
               style="margin-bottom: 1rem;"),
         method="post",
         action="/upload",
-        enctype="multipart/form-data"
+        enctype="multipart/form-data",
+    )
+
+
+def _gcs_upload_form():
+    """Direct-to-GCS upload with a progress bar.
+
+    Flow:
+      1. User picks file → JS asks server for a signed PUT URL.
+      2. JS uploads directly to GCS (no Cloudflare proxy).
+      3. JS notifies server (/api/confirm-upload) to pull the file and register it.
+      4. Server returns the usual HTMX HTML fragment into #upload-result.
+    """
+    js = """
+(function () {
+  var input = document.getElementById('gcs-file-input');
+  if (!input) return;
+
+  input.addEventListener('change', function () {
+    var file = input.files[0];
+    if (!file) return;
+
+    var bar        = document.getElementById('upload-progress-bar');
+    var barWrap    = document.getElementById('upload-progress-wrap');
+    var statusMsg  = document.getElementById('upload-status-msg');
+    var result     = document.getElementById('upload-result');
+
+    function setStatus(msg) { statusMsg.textContent = msg; }
+    function setProgress(pct) {
+      bar.style.width = pct + '%';
+      bar.textContent = pct + '%';
+    }
+
+    barWrap.style.display = 'block';
+    setProgress(0);
+    setStatus('Requesting upload URL…');
+    result.innerHTML = '';
+
+    // Step 1 – get signed URL from server
+    fetch('/api/request-upload', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        filename: file.name,
+        size: file.size,
+        content_type: file.type || 'application/octet-stream'
+      })
+    })
+    .then(function (r) { return r.json(); })
+    .then(function (data) {
+      if (data.error) { setStatus('Error: ' + data.error); barWrap.style.display='none'; return; }
+
+      // Step 2 – PUT directly to GCS
+      setStatus('Uploading to cloud storage…');
+      var xhr = new XMLHttpRequest();
+      xhr.open('PUT', data.signed_url, true);
+      xhr.setRequestHeader('Content-Type', data.content_type);
+
+      xhr.upload.onprogress = function (e) {
+        if (e.lengthComputable) setProgress(Math.round(e.loaded / e.total * 90));
+      };
+
+      xhr.onload = function () {
+        if (xhr.status < 200 || xhr.status >= 300) {
+          setStatus('Upload to GCS failed (HTTP ' + xhr.status + ').');
+          barWrap.style.display = 'none';
+          return;
+        }
+        // Step 3 – tell server to pull the file
+        setProgress(92);
+        setStatus('Processing file…');
+        fetch('/api/confirm-upload', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            gcs_object_name: data.gcs_object_name,
+            original_filename: file.name
+          })
+        })
+        .then(function (r) { return r.text(); })
+        .then(function (html) {
+          setProgress(100);
+          setStatus('Done!');
+          result.innerHTML = html;
+          // Let htmx process any hx-* attributes in the injected HTML
+          if (window.htmx) htmx.process(result);
+          setTimeout(function () { barWrap.style.display = 'none'; setProgress(0); }, 1500);
+        })
+        .catch(function (err) {
+          setStatus('Server error: ' + err);
+          barWrap.style.display = 'none';
+        });
+      };
+
+      xhr.onerror = function () {
+        setStatus('Network error during upload.');
+        barWrap.style.display = 'none';
+      };
+
+      xhr.send(file);
+    })
+    .catch(function (err) {
+      setStatus('Could not reach server: ' + err);
+      barWrap.style.display = 'none';
+    });
+  });
+})();
+"""
+    return Div(
+        # File picker
+        Input(
+            type="file",
+            id="gcs-file-input",
+            accept=".pdf,.jpg,.jpeg,.png,.webp",
+            style="margin-bottom: 0.75rem; display: block;",
+        ),
+        # Progress bar (hidden until upload starts)
+        Div(
+            Div(
+                id="upload-progress-bar",
+                style=(
+                    "width:0%; height:100%; background:#007bff; color:#fff;"
+                    " text-align:center; line-height:22px; font-size:0.8rem;"
+                    " transition:width 0.2s ease; border-radius:4px;"
+                ),
+            ),
+            id="upload-progress-wrap",
+            style=(
+                "display:none; width:100%; height:22px; background:#e9ecef;"
+                " border-radius:4px; margin-bottom:0.5rem; overflow:hidden;"
+            ),
+        ),
+        # Status text
+        Span(id="upload-status-msg", style="font-size:0.85rem; color:#555;"),
+        # Inline script (runs once after DOM insertion)
+        Script(js),
     )
 
 

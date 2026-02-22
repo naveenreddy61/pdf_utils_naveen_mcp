@@ -1,7 +1,7 @@
 [project]
-name = "pdf-mcp-server"
-version = "0.1.0"
-description = "A Model Context Protocol server for PDF manipulation using PyMuPDF"
+name = "pdf-utils-web"
+version = "0.2.0"
+description = "PDF & Image processing web app with Gemini OCR and MCP server"
 readme = "README.md"
 requires-python = ">=3.12"
 license = "MIT"
@@ -11,6 +11,7 @@ authors = [
 dependencies = [
     "aiosqlite>=0.21.0",
     "fastmcp>=2.10.6",
+    "google-cloud-storage>=3.9.0",
     "google-genai>=1.31.0",
     "litellm>=1.75.0",
     "pillow>=11.3.0",
@@ -34,9 +35,10 @@ build-backend = "hatchling.build"
 
 [project.scripts]
 pdf-mcp-server = "pdf_mcp_server:main"
+pdf-web-app = "web_app.cli:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/pdf_mcp_server"]
+packages = ["src/pdf_mcp_server", "src/web_app", "src/pdf_utils"]
 
 [tool.uv]
 package = true

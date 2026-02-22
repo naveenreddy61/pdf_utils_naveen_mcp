@@ -97,6 +97,37 @@ uv add [package_name]   # Add new dependency (NOT manual pyproject.toml edit)
 2. Open browser: http://localhost:8000
 3. Upload test PDF and verify operations
 
+### Testing Package Distribution:
+```bash
+# Build wheel
+uv build
+
+# Inspect contents
+unzip -l dist/*.whl | grep -E "(web_app|pdf_mcp_server|pdf_utils)"
+
+# Should include all three packages:
+# - pdf_mcp_server/
+# - web_app/ (including prompts/)
+# - pdf_utils/
+
+# Test installation in clean environment
+uv pip install dist/*.whl
+pdf-web-app --help
+pdf-mcp-server
+```
+
+### Testing with uvx:
+```bash
+# From local repo
+uvx --from . pdf-web-app
+
+# From GitHub (after pushing)
+uvx --from git+https://github.com/naveenreddy61/anki_nav_mcp_server pdf-web-app
+
+# With environment variable
+GOOGLE_API_KEY=test uvx --from git+https://github.com/naveenreddy61/anki_nav_mcp_server pdf-web-app
+```
+
 ### Git Workflow:
 - `acp` = add, commit, push (as noted in user's global CLAUDE.md)
 
