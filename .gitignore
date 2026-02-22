@@ -13,6 +13,10 @@ CLAUDE.md
 # Environment variables
 .env
 
+# GCP service account keys
+gcs-key.json
+*-service-account*.json
+
 # Application data
 uploads/
 *.db

@@ -53,6 +53,15 @@ def _build_file_result(file_info, is_existing: bool):
     )
 
 
+def _build_file_result_fragment(file_info, is_existing: bool):
+    """Return just the inner fragment for GCS JS injection (no full page wrapper)."""
+    return Div(
+        file_info_display(file_info, is_existing),
+        operation_buttons(file_info.file_hash, file_info.file_type),
+        Div(id="operation-result"),
+    )
+
+
 async def _register_local_file(content: bytes, original_filename: str, file_type: str):
     """Hash content, dedup against DB, write to disk, return (FileRecord, is_existing)."""
     file_hash = calculate_file_hash(content)
@@ -237,11 +246,11 @@ def setup_routes(app, rt):
                 except Exception as del_err:
                     print(f"Warning: could not delete GCS temp object: {del_err}")
 
-            return _build_file_result(file_info, is_existing)
+            return _build_file_result_fragment(file_info, is_existing)
 
         except Exception as e:
             import traceback; traceback.print_exc()
-            return page_with_result(error_message(f"Error processing uploaded file: {e}"))
+            return error_message(f"Error processing uploaded file: {e}")
         finally:
             if tmp_path.exists():
                 tmp_path.unlink()

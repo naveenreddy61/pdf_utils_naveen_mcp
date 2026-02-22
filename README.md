@@ -680,6 +680,16 @@ GCS_DELETE_AFTER_DOWNLOAD=true     # clean up temp GCS objects after download
 
 Restart `uv run app.py`. The upload form will automatically switch to the GCS direct-upload path and display a progress bar. If `GCS_BUCKET_NAME` is left empty the app falls back to the original multipart upload.
 
+### Upload flow
+
+```
+Browser → /api/request-upload → signed GCS PUT URL
+Browser → GCS (direct PUT, bypasses Cloudflare)
+Browser → /api/confirm-upload → server pulls file from GCS → local uploads/ → deletes GCS temp object
+```
+
+The service account key (`GCS_CREDENTIALS_FILE`) must be on disk — it is used at runtime to sign URLs. Keep it out of version control (it is already in `.gitignore`).
+
 ---
 
 **Note**: This server is designed to work with absolute file paths for security and reliability. Always provide full paths when working with PDF files.
