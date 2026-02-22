@@ -47,3 +47,16 @@ OCR_BATCH_TIMEOUT = 300  # Overall timeout for batch processing (seconds)
 # OCR Caching settings
 OCR_CACHE_RETENTION_DAYS = 14  # Keep cached OCR results for 2 weeks
 OCR_CACHE_DB_PATH = Path("data/ocr_cache.db")  # SQLite DB for caching
+
+# ── Google Cloud Storage (direct browser upload bypass) ──────────────────────
+# Set these to enable GCS-backed uploads that bypass Cloudflare's 100 MB limit.
+# Leave GCS_BUCKET_NAME empty / unset to fall back to local multipart upload.
+import os as _os
+GCS_BUCKET_NAME: str = _os.getenv("GCS_BUCKET_NAME", "")
+# Path to a service-account JSON key file.  Leave blank to use ADC /
+# GOOGLE_APPLICATION_CREDENTIALS environment variable.
+GCS_CREDENTIALS_FILE: str | None = _os.getenv("GCS_CREDENTIALS_FILE") or None
+# How long the signed upload URL stays valid (browser must start uploading within this window).
+GCS_SIGNED_URL_EXPIRY_MINUTES: int = int(_os.getenv("GCS_SIGNED_URL_EXPIRY_MINUTES", "15"))
+# Delete temp GCS object after the server has pulled it down locally.
+GCS_DELETE_AFTER_DOWNLOAD: bool = _os.getenv("GCS_DELETE_AFTER_DOWNLOAD", "true").lower() == "true"

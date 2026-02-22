@@ -11,6 +11,7 @@ authors = [
 dependencies = [
     "aiosqlite>=0.21.0",
     "fastmcp>=2.10.6",
+    "google-cloud-storage>=3.9.0",
     "google-genai>=1.31.0",
     "litellm>=1.75.0",
     "pillow>=11.3.0",

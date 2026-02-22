@@ -554,4 +554,53 @@ For issues and questions:
 
 ---
 
+## GCS Setup – Large File Upload Bypass
+
+By default every upload travels through Cloudflare, which enforces a **100 MB limit** on proxied requests. The GCS integration lets the browser upload directly to Google Cloud Storage via a short-lived signed URL, so Cloudflare never sees the file bytes.
+
+### What you need from GCP
+
+| Item | Where to create it |
+|------|--------------------|
+| GCP Project | Already exists if you have credits |
+| Cloud Storage bucket | Cloud Console → Storage → Create bucket |
+| Service Account | IAM & Admin → Service Accounts → Create |
+| SA key JSON | Service Account → Keys → Add Key → JSON |
+
+**Minimum IAM role** on the bucket: `roles/storage.objectAdmin` (or a custom role with `storage.objects.create`, `storage.objects.delete`, `storage.objects.get`).
+
+### CORS configuration (required)
+
+The browser PUTs directly to GCS, so GCS must allow cross-origin requests from your domain. Save this as `cors.json` and apply it once:
+
+```json
+[
+  {
+    "origin": ["https://pdf.naveenreddy61.dev"],
+    "method": ["PUT"],
+    "responseHeader": ["Content-Type"],
+    "maxAgeSeconds": 3600
+  }
+]
+```
+
+```bash
+gcloud storage buckets update gs://YOUR_BUCKET_NAME --cors-file=cors.json
+```
+
+### Environment variables
+
+Copy `.env.example` to `.env` and fill in:
+
+```
+GCS_BUCKET_NAME=your-bucket-name
+GCS_CREDENTIALS_FILE=/absolute/path/to/service-account-key.json
+GCS_SIGNED_URL_EXPIRY_MINUTES=15   # how long browser has to start the PUT
+GCS_DELETE_AFTER_DOWNLOAD=true     # clean up temp GCS objects after download
+```
+
+Restart `uv run app.py`. The upload form will automatically switch to the GCS direct-upload path and display a progress bar. If `GCS_BUCKET_NAME` is left empty the app falls back to the original multipart upload.
+
+---
+
 **Note**: This server is designed to work with absolute file paths for security and reliability. Always provide full paths when working with PDF files.
