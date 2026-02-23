@@ -82,11 +82,13 @@ main > h1, main.container > h1 {
 
 /* ── Upload zone ──────────────────────────────────────────── */
 .upload-zone {
+  position: relative;
   border: 2px dashed var(--border);
   border-radius: var(--radius-lg);
   background: var(--surface);
   padding: 2rem 1rem 1.5rem;
   text-align: center;
+  cursor: pointer;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -98,32 +100,20 @@ main > h1, main.container > h1 {
   background: var(--primary-light);
 }
 
-.upload-icon { font-size: 2.25rem; line-height: 1; }
-.upload-hint { font-size: 0.8rem; color: var(--text-muted); }
+.upload-icon  { font-size: 2.25rem; line-height: 1; pointer-events: none; }
+.upload-label { font-size: 0.9375rem; font-weight: 600; color: var(--text); pointer-events: none; }
+.upload-hint  { font-size: 0.8rem; color: var(--text-muted); pointer-events: none; }
 
-/* Visible native file input – styled button via CSS, no tricks */
-.file-picker {
-  border: none;
-  background: transparent;
+/* Invisible full-coverage file input – the zone itself is the click target */
+.upload-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
   cursor: pointer;
-  font-size: 0;        /* collapses "no file chosen" text to 0 width/height */
-  color: var(--text-muted);
-  width: auto;
-  padding: 0;
+  font-size: 0;
 }
-.file-picker::file-selector-button {
-  padding: 0.5rem 1.5rem;
-  background: var(--primary);
-  color: #fff;
-  border: none;
-  border-radius: var(--radius);
-  cursor: pointer;
-  font-size: 0.875rem;
-  font-weight: 500;
-  margin-right: 0.5rem;
-  transition: background var(--t);
-}
-.file-picker::file-selector-button:hover { background: var(--primary-hover); }
 
 /* HTMX request indicator */
 #upload-indicator { display: none; align-items: center; gap: 0.5rem; margin-top: 0.75rem;

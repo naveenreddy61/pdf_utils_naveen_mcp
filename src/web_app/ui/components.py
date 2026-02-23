@@ -7,25 +7,27 @@ from pdf_utils.config import MAX_FILE_SIZE_MB
 # ── Upload ──────────────────────────────────────────────────────────────────
 
 def upload_form():
-    """Visible native file input, styled via ::file-selector-button CSS.
+    """Upload zone with invisible full-coverage file input.
 
-    Matches the master-branch reliability: the Input is fully visible and
-    directly clickable (no label/for indirection, no hidden inputs).
-    HTMX replaces the old onchange=js: it listens for `change` on the input
-    and submits the enclosing Form as multipart/form-data to /upload.
+    The Input is transparent and covers the entire zone (position:absolute,
+    inset:0, opacity:0), so clicking anywhere opens the file picker.
+    The visible elements (icon, label, hint) are regular centered elements.
+    HTMX listens for `change` on the input and submits as multipart/form-data.
     """
     return Div(
         Form(
             # ── Upload card ───────────────────────────────────────────────
             Div(
                 P("📁", cls="upload-icon"),
-                # Visible input: browser natively opens file picker on click.
-                # Styled via ::file-selector-button in CSS – no hidden tricks.
+                P("Drop file here or click to browse", cls="upload-label"),
+                P(f"PDF · JPG · PNG · WEBP  ·  max {MAX_FILE_SIZE_MB} MB",
+                  cls="upload-hint"),
+                # Invisible full-coverage file picker – clicking zone opens dialog
                 Input(
                     type="file",
                     name="file",
                     accept=".pdf,.jpg,.jpeg,.png,.webp",
-                    cls="file-picker",
+                    cls="upload-input",
                     hx_post="/upload",
                     hx_encoding="multipart/form-data",
                     hx_trigger="change",
@@ -33,8 +35,6 @@ def upload_form():
                     hx_swap="innerHTML",
                     hx_indicator="#upload-indicator",
                 ),
-                P(f"PDF · JPG · PNG · WEBP  ·  max {MAX_FILE_SIZE_MB} MB",
-                  cls="upload-hint"),
                 cls="upload-zone",
             ),
             # ── In-flight indicator (shown by HTMX during HTTP POST) ──────
