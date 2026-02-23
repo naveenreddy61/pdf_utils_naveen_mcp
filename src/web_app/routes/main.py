@@ -153,14 +153,9 @@ def setup_routes(app, rt):
     def index():
         return Titled("PDF & Image Utilities",
             Div(
-                Div(
-                    H1("PDF & Image Utilities", cls="page-title"),
-                    P(
-                        f"Upload a PDF or image · PDF, JPG, PNG, WEBP · "
-                        f"max {MAX_FILE_SIZE_MB} MB · files kept 30 days",
-                        cls="page-subtitle",
-                    ),
-                    cls="page-header",
+                P(
+                    f"PDF · JPG · PNG · WEBP  ·  max {MAX_FILE_SIZE_MB} MB  ·  files kept 30 days",
+                    cls="page-subtitle",
                 ),
                 upload_form(),
                 cls="app-wrap",

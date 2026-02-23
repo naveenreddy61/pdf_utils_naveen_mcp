@@ -7,44 +7,46 @@ from pdf_utils.config import MAX_FILE_SIZE_MB
 # ── Upload ──────────────────────────────────────────────────────────────────
 
 def upload_form():
-    """HTMX-native upload zone - no JavaScript required.
+    """HTMX-native upload – uses a <label for=...> to open the file picker.
 
-    The Form listens for a `change` event bubbling from the hidden file input
-    (via `hx-trigger="change from:input[type='file']"`), then POSTs the file
-    as multipart to /upload.  A spinner is shown by HTMX while the HTTP
-    transfer is in flight; once the server responds with a polling component
-    the spinner goes away and 4Hz status polling takes over.
+    Clicking the visible "Choose File" button triggers the native OS file
+    dialog via the browser's built-in label→input association (no JS needed).
+    When a file is chosen, `hx-trigger="change from:#file-input"` on the
+    Form auto-submits as multipart/form-data to /upload.
     """
     return Div(
         Form(
-            # ── Drop-zone visual ──────────────────────────────────────────
+            # ── Upload card ───────────────────────────────────────────────
             Div(
                 P("📁", cls="upload-icon"),
-                P("Drop file here or click to browse", cls="upload-label"),
+                # The Label opens the file picker when clicked – 100% reliable
+                Label(
+                    "Choose File",
+                    for_="file-input",
+                    cls="upload-browse-btn",
+                ),
                 P(f"PDF · JPG · PNG · WEBP  ·  max {MAX_FILE_SIZE_MB} MB",
                   cls="upload-hint"),
-                # Invisible full-coverage file picker
-                Input(
-                    type="file",
-                    name="file",
-                    accept=".pdf,.jpg,.jpeg,.png,.webp",
-                    cls="upload-input",
-                ),
                 cls="upload-zone",
             ),
-            # ── In-flight indicator (shown by HTMX) ───────────────────────
+            # Hidden input – opened by the Label above, never clicked directly
+            Input(
+                type="file",
+                name="file",
+                id="file-input",
+                accept=".pdf,.jpg,.jpeg,.png,.webp",
+                style="display:none;",
+            ),
+            # ── In-flight indicator (shown by HTMX during HTTP POST) ──────
             Div(
                 Span(cls="spinner"),
                 Span("Uploading…"),
                 id="upload-indicator",
             ),
-            # HTMX attributes on the Form:
-            # • hx-trigger fires when the hidden file input changes
-            # • hx-encoding tells HTMX to use FormData (required for files)
-            # • result is injected into #upload-result below
+            # HTMX submits the form whenever the hidden input fires `change`
             hx_post="/upload",
             hx_encoding="multipart/form-data",
-            hx_trigger="change from:input[type='file']",
+            hx_trigger="change from:#file-input",
             hx_target="#upload-result",
             hx_swap="innerHTML",
             hx_indicator="#upload-indicator",
