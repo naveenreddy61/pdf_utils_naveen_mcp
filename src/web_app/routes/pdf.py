@@ -44,17 +44,29 @@ def setup_routes(app, rt):
         
         return Div(
             H3("Extract Pages"),
-            P(f"Total pages: {file_info.page_count}"),
+            Span(f"{file_info.page_count} pages total", cls="pill",
+                 style="display:inline-block;margin-bottom:.75rem;"),
             Form(
-                Label("Start Page:", Input(type="number", name="start_page", 
-                                          min="1", max=str(file_info.page_count), 
-                                          value="1", required=True)),
-                Label("End Page:", Input(type="number", name="end_page", 
-                                        min="1", max=str(file_info.page_count), 
-                                        value=str(file_info.page_count), required=True)),
-                Button("Extract Pages", type="submit"),
+                Div(
+                    Div(Label("Start Page"),
+                        Input(type="number", name="start_page",
+                              min="1", max=str(file_info.page_count),
+                              value="1", required=True)),
+                    Div(Label("End Page"),
+                        Input(type="number", name="end_page",
+                              min="1", max=str(file_info.page_count),
+                              value=str(file_info.page_count), required=True)),
+                    cls="form-row",
+                ),
+                Div(
+                    Button("Extract Pages", type="submit"),
+                    Span(Span(cls="spinner"), " Processing…",
+                         id="extract-pages-indicator", cls="htmx-indicator"),
+                    cls="action-row",
+                ),
                 hx_post=f"/process/extract-pages/{file_hash}",
-                hx_target="#operation-result"
+                hx_target="#operation-result",
+                hx_indicator="#extract-pages-indicator",
             ),
             cls="result-area"
         )
@@ -112,29 +124,43 @@ def setup_routes(app, rt):
         
         return Div(
             H3("Convert Pages to Images"),
-            P(f"Total pages: {file_info.page_count}"),
+            Span(f"{file_info.page_count} pages total", cls="pill",
+                 style="display:inline-block;margin-bottom:.75rem;"),
             Form(
-                Label("Start Page:", Input(type="number", name="start_page", 
-                                          min="1", max=str(file_info.page_count), 
-                                          value="1", required=True)),
-                Label("End Page:", Input(type="number", name="end_page", 
-                                        min="1", max=str(file_info.page_count), 
-                                        value=str(min(5, file_info.page_count)), required=True)),
-                Label("DPI:", Input(type="number", name="dpi", 
-                                   min=str(MIN_DPI), max=str(MAX_DPI), 
-                                   value=str(DEFAULT_DPI), required=True)),
-                Label("Format:", 
-                      Select(
-                          Option("PNG", value="png", selected=True),
-                          Option("JPG", value="jpg"),
-                          name="image_format"
-                      )),
-                Button("Convert to Images", type="submit"),
+                Div(
+                    Div(Label("Start Page"),
+                        Input(type="number", name="start_page",
+                              min="1", max=str(file_info.page_count),
+                              value="1", required=True)),
+                    Div(Label("End Page"),
+                        Input(type="number", name="end_page",
+                              min="1", max=str(file_info.page_count),
+                              value=str(min(5, file_info.page_count)), required=True)),
+                    cls="form-row",
+                ),
+                Div(
+                    Div(Label("DPI"),
+                        Input(type="number", name="dpi",
+                              min=str(MIN_DPI), max=str(MAX_DPI),
+                              value=str(DEFAULT_DPI), required=True)),
+                    Div(Label("Format"),
+                        Select(
+                            Option("PNG", value="png", selected=True),
+                            Option("JPG", value="jpg"),
+                            name="image_format",
+                        )),
+                    cls="form-row",
+                ),
+                Div(
+                    Button("Convert to Images", type="submit"),
+                    Span(Span(cls="spinner"), " Converting…",
+                         id="convert-indicator", cls="htmx-indicator"),
+                    cls="action-row",
+                ),
                 hx_post=f"/process/convert-images/{file_hash}",
                 hx_target="#operation-result",
-                hx_indicator="#convert-spinner"
+                hx_indicator="#convert-indicator",
             ),
-            Div(id="convert-spinner", cls="spinner", style="display: none;"),
             cls="result-area"
         )
     
@@ -203,22 +229,36 @@ def setup_routes(app, rt):
         
         return Div(
             H3("Extract Text"),
-            P(f"Total pages: {file_info.page_count}"),
+            Span(f"{file_info.page_count} pages total", cls="pill",
+                 style="display:inline-block;margin-bottom:.75rem;"),
             Form(
-                Label("Start Page:", Input(type="number", name="start_page", 
-                                          min="1", max=str(file_info.page_count), 
-                                          value="1", required=True)),
-                Label("End Page:", Input(type="number", name="end_page", 
-                                        min="1", max=str(file_info.page_count), 
-                                        value=str(file_info.page_count), required=True)),
-                Label(Input(type="checkbox", name="markdown", checked=True),
-                      " Extract as Markdown"),
-                Button("Extract Text", type="submit"),
+                Div(
+                    Div(Label("Start Page"),
+                        Input(type="number", name="start_page",
+                              min="1", max=str(file_info.page_count),
+                              value="1", required=True)),
+                    Div(Label("End Page"),
+                        Input(type="number", name="end_page",
+                              min="1", max=str(file_info.page_count),
+                              value=str(file_info.page_count), required=True)),
+                    cls="form-row",
+                ),
+                Label(
+                    Input(type="checkbox", name="markdown", checked=True,
+                          style="width:auto;margin-right:.4rem;"),
+                    "Extract as Markdown",
+                    style="display:flex;align-items:center;margin-bottom:.75rem;",
+                ),
+                Div(
+                    Button("Extract Text", type="submit"),
+                    Span(Span(cls="spinner"), " Extracting…",
+                         id="text-indicator", cls="htmx-indicator"),
+                    cls="action-row",
+                ),
                 hx_post=f"/process/extract-text/{file_hash}",
                 hx_target="#operation-result",
-                hx_indicator="#text-spinner"
+                hx_indicator="#text-indicator",
             ),
-            Div(id="text-spinner", cls="spinner", style="display: none;"),
             cls="result-area"
         )
     
@@ -291,32 +331,25 @@ def setup_routes(app, rt):
                     style="margin: 10px 0;"
                 ),
                 Div(
-                    A("Download Full Text", 
+                    A("⬇ Download Text",
                       href=download_url,
                       download=text_filename,
                       cls="button",
-                      style="margin-right: 10px;"),
-                    Button("Copy to Clipboard", 
-                           onclick=f"""
-                               const text = document.getElementById('{preview_id}').textContent;
-                               navigator.clipboard.writeText(text).then(() => {{
-                                   this.textContent = 'Copied!';
-                                   this.style.backgroundColor = '#28a745';
-                                   setTimeout(() => {{
-                                       this.textContent = 'Copy to Clipboard';
-                                       this.style.backgroundColor = '#007bff';
-                                   }}, 2000);
-                               }}).catch(err => {{
-                                   console.error('Failed to copy: ', err);
-                                   this.textContent = 'Copy failed';
-                                   this.style.backgroundColor = '#dc3545';
-                               }});
-                           """,
-                           cls="button"),
-                    style="display: flex; align-items: center; margin: 1rem 0;"
+                      style="background:var(--green);"),
+                    Button(
+                        "📋 Copy",
+                        onclick=(
+                            f"const t=document.getElementById('{preview_id}').textContent;"
+                            f"navigator.clipboard.writeText(t).then(()=>{{"
+                            f"this.textContent='✅ Copied!';this.style.background='var(--green)';"
+                            f"setTimeout(()=>{{this.textContent='📋 Copy';this.style.background='';}},2000);}});"
+                        ),
+                        cls="button",
+                    ),
+                    cls="action-row",
                 ),
-                H4("Preview:"),
-                Pre(preview, id=preview_id, style="white-space: pre-wrap; word-wrap: break-word; max-height: 400px; overflow-y: auto;"),
+                H4("Preview"),
+                Pre(preview, id=preview_id, cls="text-preview"),
                 cls="result-area"
             )
             
@@ -367,22 +400,34 @@ def setup_routes(app, rt):
         
         return Div(
             H3("Extract Images"),
-            P(f"Total pages: {file_info.page_count}"),
-            P("Images smaller than 25x25 pixels will be filtered out.", style="color: #666; font-size: 0.9em;"),
-            P("Maximum 12 images per page (largest by area).", style="color: #666; font-size: 0.9em;"),
+            Div(
+                Span(f"{file_info.page_count} pages total", cls="pill"),
+                Span("min 25×25 px · max 12/page", cls="pill"),
+                cls="file-meta", style="margin-bottom:.75rem;",
+            ),
             Form(
-                Label("Start Page:", Input(type="number", name="start_page", 
-                                          min="1", max=str(file_info.page_count), 
-                                          value="1", required=True)),
-                Label("End Page:", Input(type="number", name="end_page", 
-                                        min="1", max=str(file_info.page_count), 
-                                        value=str(min(10, file_info.page_count)), required=True)),
-                Button("Extract Images", type="submit"),
+                Div(
+                    Div(Label("Start Page"),
+                        Input(type="number", name="start_page",
+                              min="1", max=str(file_info.page_count),
+                              value="1", required=True)),
+                    Div(Label("End Page"),
+                        Input(type="number", name="end_page",
+                              min="1", max=str(file_info.page_count),
+                              value=str(min(10, file_info.page_count)), required=True)),
+                    cls="form-row",
+                ),
+                Div(
+                    Button("Extract Images", type="submit",
+                           style="background:var(--green);"),
+                    Span(Span(cls="spinner"), " Extracting…",
+                         id="extract-imgs-indicator", cls="htmx-indicator"),
+                    cls="action-row",
+                ),
                 hx_post=f"/process/extract-images/{file_hash}",
                 hx_target="#operation-result",
-                hx_indicator="#extract-spinner"
+                hx_indicator="#extract-imgs-indicator",
             ),
-            Div(id="extract-spinner", cls="spinner", style="display: none;"),
             cls="result-area"
         )
     
@@ -486,25 +531,35 @@ def setup_routes(app, rt):
             return Div(error_message("File not found."))
         
         return Div(
-            H3("Extract Text with LLM OCR"),
-            P(f"Total pages: {file_info.page_count}"),
-            P("This feature uses AI to extract text, with special handling for mathematical content.", 
-              style="color: #666; font-size: 0.9em;"),
-            P("Pages with math will be processed using LLM OCR with LaTeX formatting.", 
-              style="color: #666; font-size: 0.9em;"),
+            H3("Extract Text — LLM OCR"),
+            Div(
+                Span(f"{file_info.page_count} pages total", cls="pill"),
+                Span("AI · LaTeX · caching", cls="pill"),
+                cls="file-meta", style="margin-bottom:.75rem;",
+            ),
             Form(
-                Label("Start Page:", Input(type="number", name="start_page", 
-                                          min="1", max=str(file_info.page_count), 
-                                          value="1", required=True)),
-                Label("End Page:", Input(type="number", name="end_page", 
-                                        min="1", max=str(file_info.page_count), 
-                                        value=str(min(5, file_info.page_count)), required=True)),
-                Button("Extract with OCR", type="submit"),
+                Div(
+                    Div(Label("Start Page"),
+                        Input(type="number", name="start_page",
+                              min="1", max=str(file_info.page_count),
+                              value="1", required=True)),
+                    Div(Label("End Page"),
+                        Input(type="number", name="end_page",
+                              min="1", max=str(file_info.page_count),
+                              value=str(min(5, file_info.page_count)), required=True)),
+                    cls="form-row",
+                ),
+                Div(
+                    Button("Extract with OCR", type="submit",
+                           style="background:var(--purple);"),
+                    Span(Span(cls="spinner"), " Running OCR…",
+                         id="ocr-indicator", cls="htmx-indicator"),
+                    cls="action-row",
+                ),
                 hx_post=f"/process/extract-text-llm/{file_hash}",
                 hx_target="#operation-result",
-                hx_indicator="#ocr-spinner"
+                hx_indicator="#ocr-indicator",
             ),
-            Div(id="ocr-spinner", cls="spinner", style="display: none;"),
             cls="result-area"
         )
     
@@ -576,18 +631,23 @@ def setup_routes(app, rt):
             return Div(error_message("File not found."))
 
         return Div(
-            H3("Extract Text from Image with LLM OCR"),
-            P(f"File: {file_info.original_filename}"),
-            P(f"Size: {file_info.file_size / 1024 / 1024:.2f} MB"),
-            P("This feature uses AI to extract text from your image, including handwritten text and mathematical notation.",
-              style="color: #666; font-size: 0.9em; margin: 10px 0;"),
-            Button("Extract Text",
-                   hx_post=f"/process/extract-text-llm-image/{file_hash}",
-                   hx_target="#operation-result",
-                   hx_indicator="#ocr-spinner",
-                   cls="button",
-                   style="background-color: #6610f2;"),
-            Div(id="ocr-spinner", cls="spinner", style="display: none;"),
+            H3("Image OCR — LLM"),
+            Div(
+                Span(file_info.original_filename, cls="pill"),
+                Span(f"{file_info.file_size / 1024 / 1024:.1f} MB", cls="pill"),
+                cls="file-meta", style="margin-bottom:.75rem;",
+            ),
+            Div(
+                Button("Extract Text",
+                       hx_post=f"/process/extract-text-llm-image/{file_hash}",
+                       hx_target="#operation-result",
+                       hx_indicator="#img-ocr-indicator",
+                       cls="button",
+                       style="background:var(--purple);"),
+                Span(Span(cls="spinner"), " Running OCR…",
+                     id="img-ocr-indicator", cls="htmx-indicator"),
+                cls="action-row",
+            ),
             cls="result-area"
         )
 
@@ -652,77 +712,42 @@ def setup_routes(app, rt):
                 method_color = "#28a745"
 
             return Div(
-                H3("✨ Image OCR Complete"),
+                H3("Image OCR Complete"),
 
-                # Summary section
-                Div(
-                    P(results.get("summary", "Text extraction complete"),
-                      style="font-weight: bold; color: #155724; margin-bottom: 10px;"),
-                    Div(
-                        f"{method_icon} {method_text} | " +
-                        f"⚡ Processed in {processing_time:.1f}s",
-                        style="font-size: 0.9em; color: #6c757d;"
-                    ),
-                    cls="alert",
-                    style="background-color: #d4edda; border: 1px solid #c3e6cb; padding: 15px; border-radius: 4px; margin-bottom: 15px;"
-                ),
+                P(f"{method_icon} {method_text} · {processing_time:.1f}s",
+                  cls="alert-success"),
 
-                # Metrics section
+                # Metrics
                 Div(
-                    H4("Extraction Details", style="margin-bottom: 10px;"),
-                    Div(
-                        Div(
-                            Div("📊 Statistics", style="font-weight: bold; margin-bottom: 5px;"),
-                            P(f"Characters extracted: {len(results['full_text']):,}", style="margin: 2px 0;"),
-                            P(f"Token count: ~{token_count:,} tokens", style="margin: 2px 0;"),
-                            style="flex: 1; margin-right: 15px;"
-                        ),
-                        Div(
-                            Div("🪙 Token Usage", style="font-weight: bold; margin-bottom: 5px;"),
-                            P(f"Input tokens: {results['total_input_tokens']:,}", style="margin: 2px 0;"),
-                            P(f"Output tokens: {results['total_output_tokens']:,}", style="margin: 2px 0;"),
-                            P(f"Total: {results['total_input_tokens'] + results['total_output_tokens']:,}",
-                              style="margin: 2px 0; font-weight: bold;"),
-                            style="flex: 1;"
-                        ),
-                        style="display: flex; align-items: flex-start;"
-                    ),
-                    cls="metrics",
-                    style="background-color: #f8f9fa; padding: 15px; border-radius: 4px; margin-bottom: 15px;"
+                    Div(P("⏱ Time",   cls="metric-label"), P(f"{processing_time:.1f}s",    cls="metric-value"), cls="metric-box"),
+                    Div(P("📊 Chars",  cls="metric-label"), P(f"{len(results['full_text']):,}", cls="metric-value"), cls="metric-box"),
+                    Div(P("🔤 In tok", cls="metric-label"), P(f"{results['total_input_tokens']:,}",  cls="metric-value"), cls="metric-box"),
+                    Div(P("🔤 Out tok",cls="metric-label"), P(f"{results['total_output_tokens']:,}", cls="metric-value"), cls="metric-box"),
+                    cls="metrics-row",
                 ),
 
                 # Action buttons
                 Div(
-                    A("📥 Download Text",
+                    A("⬇ Download Text",
                       href=f"/{text_filename}",
                       download=text_filename,
                       cls="button",
-                      style="margin-right: 10px; background-color: #28a745;"),
-                    Button("📋 Copy to Clipboard",
-                           onclick=f"""
-                               const text = document.getElementById('{preview_id}').textContent;
-                               navigator.clipboard.writeText(text).then(() => {{
-                                   this.textContent = '✅ Copied!';
-                                   this.style.backgroundColor = '#28a745';
-                                   setTimeout(() => {{
-                                       this.textContent = '📋 Copy to Clipboard';
-                                       this.style.backgroundColor = '#007bff';
-                                   }}, 2000);
-                               }}).catch(err => {{
-                                   console.error('Failed to copy: ', err);
-                                   this.textContent = '❌ Copy failed';
-                                   this.style.backgroundColor = '#dc3545';
-                               }});
-                           """,
-                           cls="button"),
-                    style="display: flex; align-items: center; margin: 1rem 0;"
+                      style="background:var(--green);"),
+                    Button(
+                        "📋 Copy",
+                        onclick=(
+                            f"const t=document.getElementById('{preview_id}').textContent;"
+                            f"navigator.clipboard.writeText(t).then(()=>{{"
+                            f"this.textContent='✅ Copied!';this.style.background='var(--green)';"
+                            f"setTimeout(()=>{{this.textContent='📋 Copy';this.style.background='';}},2000);}});"
+                        ),
+                        cls="button",
+                    ),
+                    cls="action-row",
                 ),
 
-                # Text preview
-                H4("📖 Extracted Text:"),
-                Pre(results["full_text"],
-                    id=preview_id,
-                    style="white-space: pre-wrap; word-wrap: break-word; max-height: 400px; overflow-y: auto; background-color: #f8f9fa; padding: 15px; border-radius: 4px; border-left: 4px solid #007bff;"),
+                H4("Preview"),
+                Pre(results["full_text"], id=preview_id, cls="text-preview"),
 
                 cls="result-area"
             )
