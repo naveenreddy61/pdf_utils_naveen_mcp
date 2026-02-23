@@ -101,20 +101,29 @@ main > h1, main.container > h1 {
 .upload-icon { font-size: 2.25rem; line-height: 1; }
 .upload-hint { font-size: 0.8rem; color: var(--text-muted); }
 
-/* Styled label that opens the native file picker */
-.upload-browse-btn {
-  display: inline-block;
+/* Visible native file input – styled button via CSS, no tricks */
+.file-picker {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  width: auto;
+  padding: 0;
+}
+.file-picker::file-selector-button {
   padding: 0.5rem 1.5rem;
   background: var(--primary);
   color: #fff;
+  border: none;
   border-radius: var(--radius);
   cursor: pointer;
   font-size: 0.875rem;
   font-weight: 500;
+  margin-right: 0.5rem;
   transition: background var(--t);
-  user-select: none;
 }
-.upload-browse-btn:hover { background: var(--primary-hover); }
+.file-picker::file-selector-button:hover { background: var(--primary-hover); }
 
 /* HTMX request indicator */
 #upload-indicator { display: none; align-items: center; gap: 0.5rem; margin-top: 0.75rem;
