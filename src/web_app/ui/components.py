@@ -7,34 +7,36 @@ from pdf_utils.config import MAX_FILE_SIZE_MB
 # ── Upload ──────────────────────────────────────────────────────────────────
 
 def upload_form():
-    """Upload zone with invisible full-coverage file input.
+    """Upload zone with a styled label button over a hidden file input.
 
-    The Input is transparent and covers the entire zone (position:absolute,
-    inset:0, opacity:0), so clicking anywhere opens the file picker.
-    The visible elements (icon, label, hint) are regular centered elements.
-    HTMX listens for `change` on the input and submits as multipart/form-data.
+    Clicking the label opens the OS file dialog (standard label behaviour).
+    HTMX listens for `change` on the hidden input and posts as multipart/form-data.
+    The label is a plain inline-block so flexbox centers it perfectly under the icon.
     """
     return Div(
         Form(
             # ── Upload card ───────────────────────────────────────────────
             Div(
                 P("📁", cls="upload-icon"),
-                P("Drop file here or click to browse", cls="upload-label"),
+                # Styled label acts as the visible "Choose File" button
+                Label(
+                    "Choose File",
+                    Input(
+                        type="file",
+                        name="file",
+                        accept=".pdf,.jpg,.jpeg,.png,.webp",
+                        style="display:none",
+                        hx_post="/upload",
+                        hx_encoding="multipart/form-data",
+                        hx_trigger="change",
+                        hx_target="#upload-result",
+                        hx_swap="innerHTML",
+                        hx_indicator="#upload-indicator",
+                    ),
+                    cls="file-label-btn",
+                ),
                 P(f"PDF · JPG · PNG · WEBP  ·  max {MAX_FILE_SIZE_MB} MB",
                   cls="upload-hint"),
-                # Invisible full-coverage file picker – clicking zone opens dialog
-                Input(
-                    type="file",
-                    name="file",
-                    accept=".pdf,.jpg,.jpeg,.png,.webp",
-                    cls="upload-input",
-                    hx_post="/upload",
-                    hx_encoding="multipart/form-data",
-                    hx_trigger="change",
-                    hx_target="#upload-result",
-                    hx_swap="innerHTML",
-                    hx_indicator="#upload-indicator",
-                ),
                 cls="upload-zone",
             ),
             # ── In-flight indicator (shown by HTMX during HTTP POST) ──────

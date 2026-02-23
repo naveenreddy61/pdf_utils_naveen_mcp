@@ -82,7 +82,6 @@ main > h1, main.container > h1 {
 
 /* ── Upload zone ──────────────────────────────────────────── */
 .upload-zone {
-  position: relative;
   border: 2px dashed var(--border);
   border-radius: var(--radius-lg);
   background: var(--surface);
@@ -100,20 +99,22 @@ main > h1, main.container > h1 {
   background: var(--primary-light);
 }
 
-.upload-icon  { font-size: 2.25rem; line-height: 1; pointer-events: none; }
-.upload-label { font-size: 0.9375rem; font-weight: 600; color: var(--text); pointer-events: none; }
-.upload-hint  { font-size: 0.8rem; color: var(--text-muted); pointer-events: none; }
+.upload-icon { font-size: 2.25rem; line-height: 1; }
+.upload-hint { font-size: 0.8rem; color: var(--text-muted); }
 
-/* Invisible full-coverage file input – the zone itself is the click target */
-.upload-input {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  opacity: 0;
+/* Styled label – acts as the "Choose File" button, perfectly centerable */
+.file-label-btn {
+  display: inline-block;
+  padding: 0.5rem 1.5rem;
+  background: var(--primary);
+  color: #fff;
+  border-radius: var(--radius);
+  font-size: 0.875rem;
+  font-weight: 600;
   cursor: pointer;
-  font-size: 0;
+  transition: background var(--t);
 }
+.file-label-btn:hover { background: var(--primary-hover); }
 
 /* HTMX request indicator */
 #upload-indicator { display: none; align-items: center; gap: 0.5rem; margin-top: 0.75rem;
