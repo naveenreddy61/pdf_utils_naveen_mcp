@@ -106,7 +106,7 @@ main > h1, main.container > h1 {
   border: none;
   background: transparent;
   cursor: pointer;
-  font-size: 0.875rem;
+  font-size: 0;        /* collapses "no file chosen" text to 0 width/height */
   color: var(--text-muted);
   width: auto;
   padding: 0;
