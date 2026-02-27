@@ -34,6 +34,13 @@ The project includes a FastHTML web application (`src/web_app/`) for browser-bas
 uv run app.py  # Starts server on port 8000
 ```
 
+### VPS Service Management:
+For managing the systemd service, nginx, and logs on the VPS, refer to `vps-guide.md`.
+Key commands:
+- Restart app: `systemctl restart pdf-app`
+- View live logs: `journalctl -u pdf-app -f`
+- App runs at: https://pdf.naveenreddy61.dev (port 8000, service: `pdf-app`)
+
 ### Important Patterns:
 - Use HTMX for page updates (`hx_post`, `hx_get`, `hx_target`)
 - Use JavaScript `window.location.href` for file downloads (NOT HTMX)

@@ -15,7 +15,10 @@ DB_PATH = Path("data/pdf_files.db")
 SERVER_PORT = 8000
 
 # Allowed file extensions
-ALLOWED_EXTENSIONS = {'.pdf', '.jpg', '.jpeg', '.png', '.webp'}
+ALLOWED_EXTENSIONS = {'.pdf', '.jpg', '.jpeg', '.png', '.webp', '.ppt', '.pptx'}
+
+# LibreOffice conversion settings
+LIBREOFFICE_TIMEOUT = 60  # seconds to wait for soffice conversion
 
 # Image conversion settings
 DEFAULT_DPI = 150

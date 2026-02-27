@@ -16,6 +16,7 @@ from web_app.core.database import (
 )
 from web_app.core.utils import calculate_file_hash, sanitize_filename
 from web_app.services.pdf_service import get_page_count
+from web_app.services.pptx_service import convert_pptx_to_pdf_bytes
 from web_app.ui.components import (
     upload_form, file_info_display, operation_buttons,
     error_message, upload_progress_poll, upload_progress_status,
@@ -34,6 +35,8 @@ _EXT_MAP = {
     ".jpeg": ("image/jpeg",      "image"),
     ".png":  ("image/png",       "image"),
     ".webp": ("image/webp",      "image"),
+    ".ppt":  ("application/vnd.ms-powerpoint", "pptx"),
+    ".pptx": ("application/vnd.openxmlformats-officedocument.presentationml.presentation", "pptx"),
 }
 
 # ── In-memory task store (per-process; fine for single-worker deployments) ───
@@ -110,7 +113,15 @@ async def _run_upload_task(
                                 "result": (existing, True)}
             return
 
-        _tasks[task_id] = {"phase": "Saving file…", "pct": 60}
+        # Convert PPTX/PPT → PDF before saving
+        if file_type == "pptx":
+            _tasks[task_id] = {"phase": "Converting to PDF…", "pct": 55}
+            await asyncio.sleep(0)
+            content = await convert_pptx_to_pdf_bytes(content, original_filename)
+            original_filename = Path(original_filename).stem + ".pdf"
+            file_type = "pdf"
+
+        _tasks[task_id] = {"phase": "Saving file…", "pct": 70}
         await asyncio.sleep(0)
 
         safe_filename   = sanitize_filename(original_filename)
@@ -118,7 +129,7 @@ async def _run_upload_task(
         file_path       = UPLOAD_DIR / stored_filename
         await asyncio.to_thread(file_path.write_bytes, content)
 
-        _tasks[task_id] = {"phase": "Reading document info…", "pct": 82}
+        _tasks[task_id] = {"phase": "Reading document info…", "pct": 85}
         await asyncio.sleep(0)
 
         page_count = (
@@ -154,7 +165,7 @@ def setup_routes(app, rt):
         return Titled("PDF & Image Utilities",
             Div(
                 P(
-                    f"PDF · JPG · PNG · WEBP  ·  max {MAX_FILE_SIZE_MB} MB  ·  files kept 30 days",
+                    f"PDF · PPT · JPG · PNG · WEBP  ·  max {MAX_FILE_SIZE_MB} MB  ·  files kept 30 days",
                     cls="page-subtitle",
                 ),
                 upload_form(),
@@ -179,7 +190,7 @@ def setup_routes(app, rt):
             type_info = _file_type_from_name(filename_lower)
             if not type_info:
                 return error_message(
-                    "Unsupported file type. Allowed: PDF, JPG, JPEG, PNG, WEBP."
+                    "Unsupported file type. Allowed: PDF, JPG, JPEG, PNG, WEBP, PPT, PPTX."
                 )
             _, file_type = type_info
 
