@@ -12,6 +12,7 @@ from web_app.core.utils import count_tokens
 from web_app.services import pdf_service
 from web_app.ui.components import error_message, toc_display, image_extraction_gallery, ocr_result_display
 from web_app.services import ocr_service
+from web_app.services import deepseek_ocr_service
 
 
 def setup_routes(app, rt):
@@ -550,6 +551,25 @@ def setup_routes(app, rt):
                     cls="form-row",
                 ),
                 Div(
+                    Label("OCR Backend", style="font-weight:600;margin-bottom:0.35rem;display:block;"),
+                    Div(
+                        Label(
+                            Input(type="radio", name="backend", value="gemini",
+                                  checked=True, style="margin-right:0.35rem;"),
+                            "☁ Gemini (Cloud)",
+                            style="margin-right:1.25rem;cursor:pointer;",
+                        ),
+                        Label(
+                            Input(type="radio", name="backend", value="deepseek_modal",
+                                  style="margin-right:0.35rem;"),
+                            "⚡ DeepSeek OCR 2 (GPU via Modal)",
+                            style="cursor:pointer;",
+                        ),
+                        style="display:flex;align-items:center;",
+                    ),
+                    style="margin-bottom:0.75rem;",
+                ),
+                Div(
                     Button("Extract with OCR", type="submit",
                            style="background:var(--purple);"),
                     Span(Span(cls="spinner"), " Running OCR…",
@@ -565,37 +585,44 @@ def setup_routes(app, rt):
     
     
     @rt('/process/extract-text-llm/{file_hash}')
-    async def process_extract_text_llm(file_hash: str, start_page: int, end_page: int):
+    async def process_extract_text_llm(
+        file_hash: str, start_page: int, end_page: int,
+        backend: str = "gemini",
+    ):
         """Extract text using async LLM OCR with caching and batch processing."""
         try:
             file_info = get_file_info(file_hash)
             if not file_info:
                 return Div(error_message("File not found."))
-            
+
             file_path = UPLOAD_DIR / file_info.stored_filename
-            
+
             # Validate page range
             if start_page < 1 or end_page > file_info.page_count or start_page > end_page:
                 return Div(error_message("Invalid page range."))
-            
+
             # Store progress messages
             progress_messages = []
-            
+
             def progress_callback(message: str):
                 progress_messages.append(message)
                 print(f"OCR Progress: {message}")
-            
+
+            # Select backend
+            service = deepseek_ocr_service if backend == "deepseek_modal" else ocr_service
+
             # Process pages with async OCR
-            print(f"Starting async LLM OCR extraction for pages {start_page} to {end_page} from: {file_path}")
-            results = await ocr_service.process_pages_async_batch(
-                file_path, 
-                start_page, 
+            print(f"Starting OCR extraction ({backend}) for pages {start_page}–{end_page} from: {file_path}")
+            results = await service.process_document_async(
+                file_path,
+                start_page,
                 end_page,
                 progress_callback=progress_callback
             )
-            
-            # Add progress messages to results for display
+
+            # Add progress messages and backend info to results for display
             results["progress_messages"] = progress_messages
+            results["backend"] = backend
             
             # Save text to file for download
             # Calculate cache hit rate for filename

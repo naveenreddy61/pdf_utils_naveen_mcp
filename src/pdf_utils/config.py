@@ -51,8 +51,19 @@ OCR_BATCH_TIMEOUT = 300  # Overall timeout for batch processing (seconds)
 OCR_CACHE_RETENTION_DAYS = 14  # Keep cached OCR results for 2 weeks
 OCR_CACHE_DB_PATH = Path("data/ocr_cache.db")  # SQLite DB for caching
 
-# GCS settings for large file upload bypass
+# OCR backend selection: "gemini" (default) or "deepseek_modal"
 import os as _os
+OCR_BACKEND: str = _os.getenv("OCR_BACKEND", "gemini")
+
+# Modal / DeepSeek OCR settings (used when OCR_BACKEND="deepseek_modal")
+MODAL_OCR_ENDPOINT: str = _os.getenv("MODAL_OCR_ENDPOINT", "")
+MODAL_TOKEN_ID: str = _os.getenv("MODAL_TOKEN_ID", "")
+MODAL_TOKEN_SECRET: str = _os.getenv("MODAL_TOKEN_SECRET", "")
+MODAL_OCR_DPI: int = int(_os.getenv("MODAL_OCR_DPI", "150"))
+MODAL_OCR_TIMEOUT: int = int(_os.getenv("MODAL_OCR_TIMEOUT", "120"))
+MODAL_OCR_CONCURRENT_REQUESTS: int = int(_os.getenv("MODAL_OCR_CONCURRENT_REQUESTS", "5"))
+
+# GCS settings for large file upload bypass
 GCS_BUCKET_NAME: str = _os.getenv("GCS_BUCKET_NAME", "")
 GCS_CREDENTIALS_FILE: str | None = _os.getenv("GCS_CREDENTIALS_FILE") or None
 GCS_SIGNED_URL_EXPIRY_MINUTES: int = int(_os.getenv("GCS_SIGNED_URL_EXPIRY_MINUTES", "15"))

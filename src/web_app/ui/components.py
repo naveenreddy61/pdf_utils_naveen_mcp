@@ -322,6 +322,10 @@ def ocr_result_display(results, file_hash, start_page, end_page, text_filename):
     in_tok        = results.get("total_input_tokens", 0)
     out_tok       = results.get("total_output_tokens", 0)
 
+    backend       = results.get("backend", "gemini")
+    backend_label = "⚡ DeepSeek OCR 2 (GPU)" if backend == "deepseek_modal" else "☁ Gemini (Cloud)"
+    backend_color = "#7c3aed" if backend == "deepseek_modal" else "#0369a1"
+
     # ── metrics boxes ──────────────────────────────────────────────────────
     metrics = Div(
         Div(
@@ -384,6 +388,15 @@ def ocr_result_display(results, file_hash, start_page, end_page, text_filename):
     return Div(
         P(results.get("summary", "OCR complete"),
           cls="alert-success"),
+
+        Div(
+            Span(backend_label,
+                 style=f"font-size:0.8rem;font-weight:600;color:{backend_color};"
+                       "background:color-mix(in srgb,currentColor 12%,transparent);"
+                       "border:1px solid currentColor;border-radius:999px;"
+                       "padding:0.15rem 0.6rem;"),
+            style="margin-bottom:0.75rem;",
+        ),
 
         metrics,
 
