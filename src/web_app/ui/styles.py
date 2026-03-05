@@ -435,4 +435,92 @@ h4 { font-size: 0.8rem; font-weight: 600; margin-bottom: 0.5rem; color: var(--te
   margin-top: 0.75rem;
 }
 .image-thumb { width: 100%; height: auto; border: 1px solid var(--border); border-radius: var(--radius); display: block; }
+
+/* ── Batch processing ─────────────────────────────────────── */
+.batch-file-list {
+  margin: 0.75rem 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.batch-file-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.875rem;
+}
+.batch-file-row:last-child { border-bottom: none; }
+.batch-file-row:nth-child(even) { background: var(--surface-alt); }
+.batch-file-name { flex: 1; word-break: break-all; }
+.batch-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.badge-uploading { background: var(--primary-light); color: var(--primary); }
+.badge-done      { background: var(--green-light);   color: var(--green); }
+.badge-error     { background: var(--red-light);      color: var(--red); }
+
+/* Batch ops grid – same style as single-file ops but 3-col max */
+.batch-ops-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
+  margin-top: 0.875rem;
+}
+
+/* Disabled button state */
+button:disabled, .button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* Batch result accordion */
+.batch-accordion {
+  margin-top: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.batch-accordion details {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+.batch-accordion summary {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.9rem;
+  list-style: none;
+  user-select: none;
+}
+.batch-accordion summary::-webkit-details-marker { display: none; }
+.batch-accordion summary::before {
+  content: "▶";
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  transition: transform var(--t);
+  flex-shrink: 0;
+}
+.batch-accordion details[open] summary::before { transform: rotate(90deg); }
+.batch-accordion .batch-item-body {
+  padding: 0 1rem 1rem;
+  border-top: 1px solid var(--border);
+}
+.batch-item-error {
+  padding: 0.75rem 1rem 1rem;
+}
 """

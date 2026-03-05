@@ -222,6 +222,329 @@ def toc_display(toc):
     )
 
 
+# ── Batch processing ─────────────────────────────────────────────────────────
+
+def batch_page():
+    """Full batch-upload page.
+
+    JS strategy:
+    - User selects multiple files.
+    - JS uploads them one-by-one to POST /upload, polls /upload-status/{task_id}.
+    - On success, appends a hidden <input name="file_hash"> to #batch-form and
+      updates the file-list row to a green badge.
+    - 'Process All' button is enabled once ≥ 1 hash is registered.
+    """
+    js = r"""
+(function() {
+  let uploadedCount = 0;
+
+  function setProcessBtn() {
+    const btn = document.getElementById('batch-process-section');
+    if (btn) btn.style.display = uploadedCount > 0 ? '' : 'none';
+  }
+
+  function addRow(filename) {
+    const list = document.getElementById('batch-file-list');
+    const row = document.createElement('div');
+    row.className = 'batch-file-row';
+    row.id = 'row-' + encodeURIComponent(filename);
+    row.innerHTML =
+      '<span class="batch-file-name">' + filename + '</span>' +
+      '<span class="batch-status-badge badge-uploading" id="badge-' + encodeURIComponent(filename) + '">' +
+      '<span class="spinner" style="width:10px;height:10px;border-width:1.5px;"></span> Uploading</span>';
+    list.appendChild(row);
+  }
+
+  function markDone(filename) {
+    const badge = document.getElementById('badge-' + encodeURIComponent(filename));
+    if (badge) { badge.className = 'batch-status-badge badge-done'; badge.textContent = '✓ Ready'; }
+  }
+
+  function markError(filename, msg) {
+    const badge = document.getElementById('badge-' + encodeURIComponent(filename));
+    if (badge) { badge.className = 'batch-status-badge badge-error'; badge.textContent = '✗ Error'; badge.title = msg; }
+  }
+
+  function poll(taskId, filename) {
+    fetch('/upload-status/' + taskId, {headers: {'HX-Request': 'true'}})
+      .then(r => r.text())
+      .then(html => {
+        // Done when the response contains file_hash hidden input (set by server)
+        // We look for the hash in the returned HTML fragment.
+        // The status endpoint returns the full fragment (file info + ops buttons)
+        // or a progress bar div. We detect completion by absence of hx-trigger.
+        const tmp = document.createElement('div');
+        tmp.innerHTML = html;
+        // Check for error
+        if (tmp.querySelector('.error')) {
+          markError(filename, tmp.textContent.trim());
+          return;
+        }
+        // Detect "still in progress" by presence of hx-get on #upload-poll
+        if (tmp.querySelector('#upload-poll')) {
+          setTimeout(() => poll(taskId, filename), 300);
+          return;
+        }
+        // Done: scrape file_hash from the fragment.
+        // The fragment contains hx-post/hx-get URLs like /process/toc/{hash}
+        // We extract the hash from those URLs.
+        const match = html.match(/\/process\/toc\/([a-f0-9]{64})/);
+        if (match) {
+          const hash = match[1];
+          // Add hidden input to the form
+          const form = document.getElementById('batch-form');
+          const inp = document.createElement('input');
+          inp.type = 'hidden'; inp.name = 'file_hash'; inp.value = hash;
+          form.appendChild(inp);
+          uploadedCount++;
+          markDone(filename);
+          setProcessBtn();
+        } else {
+          // Fallback: re-poll once more
+          setTimeout(() => poll(taskId, filename), 300);
+        }
+      })
+      .catch(() => markError(filename, 'Network error'));
+  }
+
+  function uploadFile(file) {
+    addRow(file.name);
+    const fd = new FormData();
+    fd.append('file', file);
+    fetch('/upload', {method: 'POST', body: fd, headers: {'HX-Request': 'true'}})
+      .then(r => r.text())
+      .then(html => {
+        // Server may return a task-id polling div immediately
+        const tmp = document.createElement('div');
+        tmp.innerHTML = html;
+        const pollDiv = tmp.querySelector('[hx-get^="/upload-status/"]') ||
+                        tmp.querySelector('[data-hx-get^="/upload-status/"]');
+        if (pollDiv) {
+          const taskId = (pollDiv.getAttribute('hx-get') || pollDiv.getAttribute('data-hx-get')).split('/').pop();
+          poll(taskId, file.name);
+        } else {
+          // Immediate result (dedup hit) – extract hash same way
+          const match = html.match(/\/process\/toc\/([a-f0-9]{64})/);
+          if (match) {
+            const form = document.getElementById('batch-form');
+            const inp = document.createElement('input');
+            inp.type = 'hidden'; inp.name = 'file_hash'; inp.value = match[1];
+            form.appendChild(inp);
+            uploadedCount++;
+            markDone(file.name);
+            setProcessBtn();
+          } else {
+            markError(file.name, 'Unexpected server response');
+          }
+        }
+      })
+      .catch(() => markError(file.name, 'Network error'));
+  }
+
+  document.addEventListener('DOMContentLoaded', function() {
+    setProcessBtn();
+    document.getElementById('batch-file-input').addEventListener('change', function(e) {
+      Array.from(e.target.files).forEach(uploadFile);
+      e.target.value = '';  // allow re-selecting same files
+    });
+  });
+})();
+"""
+    return Titled("Batch PDF Processing",
+        Div(
+            P(
+                "Upload multiple PDFs, choose an operation, and process all pages of every file.",
+                cls="page-subtitle",
+            ),
+            P(A("← Single file mode", href="/"), style="text-align:center;font-size:0.85rem;color:var(--text-muted);margin-bottom:1rem;"),
+
+            # ── Upload card ──────────────────────────────────────────────────
+            Div(
+                P("📁", cls="upload-icon"),
+                Label(
+                    "Choose Files",
+                    Input(
+                        type="file",
+                        id="batch-file-input",
+                        name="file",
+                        accept=".pdf,.jpg,.jpeg,.png,.webp,.ppt,.pptx",
+                        multiple=True,
+                        style="display:none",
+                    ),
+                    cls="file-label-btn",
+                ),
+                P("Select one or more PDF files to upload", cls="upload-hint"),
+                cls="upload-zone",
+            ),
+
+            # ── File list table ──────────────────────────────────────────────
+            Div(id="batch-file-list", cls="batch-file-list",
+                style="margin-top:0.75rem;"),
+
+            # ── Batch form (hidden inputs populated by JS, ops visible) ──────
+            Form(
+                # Operation selector (hidden, set by op buttons below)
+                Input(type="hidden", name="operation", id="batch-operation", value="text"),
+
+                # ── Operation buttons ────────────────────────────────────────
+                Div(
+                    H3("Select Operation"),
+                    Div(
+                        Button(
+                            Span("📑", cls="op-icon"), Span("TOC"),
+                            type="button",
+                            cls="op-btn",
+                            onclick="document.getElementById('batch-operation').value='toc';submitBatch()",
+                            id="btn-toc",
+                        ),
+                        Button(
+                            Span("📝", cls="op-icon"), Span("Extract Text"),
+                            type="button",
+                            cls="op-btn",
+                            onclick="document.getElementById('batch-operation').value='text';submitBatch()",
+                            id="btn-text",
+                        ),
+                        Button(
+                            Span("🖼", cls="op-icon"), Span("To Images"),
+                            type="button",
+                            cls="op-btn",
+                            onclick="document.getElementById('batch-operation').value='images';submitBatch()",
+                            id="btn-images",
+                        ),
+                        cls="batch-ops-grid",
+                    ),
+                    Span(
+                        Span(cls="spinner"),
+                        " Processing all files…",
+                        id="batch-indicator",
+                        cls="htmx-indicator",
+                        style="display:none;align-items:center;gap:.5rem;margin-top:.75rem;font-size:.875rem;color:var(--primary);font-weight:500;",
+                    ),
+                    id="batch-process-section",
+                    style="display:none;margin-top:1rem;",
+                ),
+                id="batch-form",
+                hx_post="/batch/process",
+                hx_target="#batch-result",
+                hx_swap="innerHTML",
+                hx_indicator="#batch-indicator",
+            ),
+
+            # ── Result area ──────────────────────────────────────────────────
+            Div(id="batch-result"),
+
+            Script(js),
+            Script("""
+function submitBatch() {
+  const ind = document.getElementById('batch-indicator');
+  if (ind) { ind.style.display = 'flex'; }
+  htmx.trigger(document.getElementById('batch-form'), 'submit');
+}
+"""),
+            cls="app-wrap",
+        )
+    )
+
+
+def batch_result_accordion(results: list):
+    """Collapsible accordion of per-file batch results.
+
+    Each entry in results is a dict:
+      { "filename": str, "operation": str, "result": any, "error": str|None }
+    """
+    items = []
+    for i, r in enumerate(results):
+        filename = r.get("filename", f"File {i+1}")
+        error    = r.get("error")
+        op       = r.get("operation", "")
+        result   = r.get("result")
+
+        if error:
+            status_icon = "✗"
+            status_style = "color:var(--red);"
+            body = Div(
+                P(f"Error: {error}", cls="alert-error"),
+                cls="batch-item-error",
+            )
+        else:
+            status_icon = "✓"
+            status_style = "color:var(--green);"
+
+            if op == "toc":
+                body = Div(toc_display(result), cls="batch-item-body")
+
+            elif op == "text":
+                text_content  = result.get("text", "")
+                text_filename = result.get("filename", "")
+                preview_id    = f"batch-preview-{i}"
+                body = Div(
+                    Div(
+                        Span(f"{len(text_content):,} characters", cls="pill"),
+                        cls="file-meta", style="margin:.5rem 0;",
+                    ),
+                    Div(
+                        A("⬇ Download Text",
+                          href=f"/{text_filename}",
+                          download=text_filename,
+                          cls="button",
+                          style="background:var(--green);"),
+                        Button(
+                            "📋 Copy",
+                            onclick=(
+                                f"const t=document.getElementById('{preview_id}').textContent;"
+                                f"navigator.clipboard.writeText(t).then(()=>{{"
+                                f"this.textContent='✅ Copied!';this.style.background='var(--green)';"
+                                f"setTimeout(()=>{{this.textContent='📋 Copy';this.style.background='';}},2000);}});"
+                            ),
+                            cls="button",
+                        ),
+                        cls="action-row",
+                    ),
+                    Pre(text_content[:3000] + ("…" if len(text_content) > 3000 else ""),
+                        id=preview_id, cls="text-preview"),
+                    cls="batch-item-body",
+                )
+
+            elif op == "images":
+                image_files = result if isinstance(result, list) else []
+                image_elements = [
+                    Div(A(Img(src=f"/{f}", cls="image-thumb"), href=f"/{f}", download=f))
+                    for f in image_files
+                ]
+                body = Div(
+                    P(f"{len(image_files)} image(s) generated", cls="alert-success"),
+                    Div(*image_elements, cls="image-gallery") if image_elements else P("No images."),
+                    cls="batch-item-body",
+                )
+            else:
+                body = Div(P("Done.", cls="alert-success"), cls="batch-item-body")
+
+        items.append(
+            Details(
+                Summary(
+                    Span(status_icon, style=f"{status_style}font-weight:700;"),
+                    Span(filename, style="flex:1;"),
+                    Span(op.upper(), cls="pill"),
+                ),
+                body,
+                open=(i == 0),  # first item expanded by default
+            )
+        )
+
+    total    = len(results)
+    n_ok     = sum(1 for r in results if not r.get("error"))
+    n_failed = total - n_ok
+    summary_cls  = "alert-success" if n_failed == 0 else "alert-warning"
+    summary_text = f"Processed {n_ok}/{total} files successfully."
+    if n_failed:
+        summary_text += f" {n_failed} failed."
+
+    return Div(
+        P(summary_text, cls=summary_cls),
+        Div(*items, cls="batch-accordion"),
+    )
+
+
 # ── Alerts ───────────────────────────────────────────────────────────────────
 
 def error_message(message):

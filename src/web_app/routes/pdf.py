@@ -10,13 +10,94 @@ from pdf_utils.config import UPLOAD_DIR, MIN_DPI, MAX_DPI, DEFAULT_DPI
 from web_app.core.database import get_file_info
 from web_app.core.utils import count_tokens
 from web_app.services import pdf_service
-from web_app.ui.components import error_message, toc_display, image_extraction_gallery, ocr_result_display
+from web_app.ui.components import error_message, toc_display, image_extraction_gallery, ocr_result_display, batch_result_accordion
 from web_app.services import ocr_service
 
 
 def setup_routes(app, rt):
     """Set up PDF processing routes."""
     
+    @rt('/batch/process', methods=['POST'])
+    async def batch_process(request: Request):
+        """Process all pages of multiple files with a single operation (sequential)."""
+        form = await request.form()
+        # getlist because file_hash is a repeated field
+        file_hashes = form.getlist('file_hash')
+        operation   = form.get('operation', 'text')
+
+        if not file_hashes:
+            return error_message("No files provided for batch processing.")
+
+        results = []
+        for file_hash in file_hashes:
+            file_info = get_file_info(file_hash)
+            if not file_info:
+                results.append({
+                    "filename": f"Unknown ({file_hash[:8]}…)",
+                    "operation": operation,
+                    "result": None,
+                    "error": "File not found in database.",
+                })
+                continue
+
+            file_path = UPLOAD_DIR / file_info.stored_filename
+            start, end = 1, file_info.page_count
+
+            try:
+                if operation == "toc":
+                    toc = pdf_service.extract_toc(file_path)
+                    results.append({
+                        "filename": file_info.original_filename,
+                        "operation": operation,
+                        "result": toc,
+                        "error": None,
+                    })
+
+                elif operation == "text":
+                    text_content = pdf_service.extract_text_markdown(file_path, start, end)
+                    text_filename = (
+                        f"mcp_{file_info.stored_filename.replace('.pdf', '')}"
+                        f"_batch_text_all.txt"
+                    )
+                    (UPLOAD_DIR / text_filename).write_text(text_content, encoding='utf-8')
+                    results.append({
+                        "filename": file_info.original_filename,
+                        "operation": operation,
+                        "result": {"text": text_content, "filename": text_filename},
+                        "error": None,
+                    })
+
+                elif operation == "images":
+                    image_files = pdf_service.convert_pages_to_images(
+                        file_path, start, end, DEFAULT_DPI, "png"
+                    )
+                    results.append({
+                        "filename": file_info.original_filename,
+                        "operation": operation,
+                        "result": image_files,
+                        "error": None,
+                    })
+
+                else:
+                    results.append({
+                        "filename": file_info.original_filename,
+                        "operation": operation,
+                        "result": None,
+                        "error": f"Unknown operation: {operation}",
+                    })
+
+            except Exception as exc:
+                import traceback; traceback.print_exc()
+                results.append({
+                    "filename": file_info.original_filename,
+                    "operation": operation,
+                    "result": None,
+                    "error": str(exc),
+                })
+
+        return batch_result_accordion(results)
+
+
     @rt('/process/toc/{file_hash}')
     def process_toc(file_hash: str):
         """Extract and display table of contents."""
