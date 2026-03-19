@@ -195,11 +195,28 @@ def _op_btn(icon: str, label: str, extra_cls: str = "", **htmx_attrs):
 # ── URL to Markdown ──────────────────────────────────────────────────────────
 
 def url_input_form():
-    """URL input section with options and HTMX submission."""
+    """URL input section — card below the file upload."""
     return Div(
-        Form(
+        # ── divider ──────────────────────────────────────────────────────
+        Div(
+            Div(cls="or-line"),
+            Span("or extract from a URL", cls="or-label"),
+            Div(cls="or-line"),
+            cls="or-divider",
+        ),
+        # ── card ─────────────────────────────────────────────────────────
+        Div(
             Div(
-                P("🔗", cls="upload-icon"),
+                Span("🔗", cls="url-section-icon"),
+                Div(
+                    P("URL to Markdown", cls="url-section-title"),
+                    P("Paste any article, blog post, or docs page",
+                      cls="url-section-sub"),
+                    cls="url-section-text",
+                ),
+                cls="url-section-header",
+            ),
+            Form(
                 Div(
                     Input(
                         type="text",
@@ -208,42 +225,41 @@ def url_input_form():
                         cls="url-input",
                         autocomplete="off",
                     ),
-                    Button("Convert", type="submit", cls="url-btn"),
+                    Button("Convert", type="submit", cls="url-submit-btn"),
                     cls="url-input-row",
                 ),
                 Div(
                     Label(
                         Input(type="checkbox", name="include_links",  value="on", checked=True),
-                        " Include links",
+                        "Links",
                         cls="url-option",
                     ),
                     Label(
                         Input(type="checkbox", name="include_tables", value="on", checked=True),
-                        " Include tables",
+                        "Tables",
                         cls="url-option",
                     ),
                     Label(
                         Input(type="checkbox", name="include_images", value="on"),
-                        " Include images",
+                        "Images",
                         cls="url-option",
+                    ),
+                    Div(
+                        Span(cls="spinner"),
+                        Span("Fetching…"),
+                        id="url-indicator",
+                        cls="htmx-indicator url-spinner",
                     ),
                     cls="url-options",
                 ),
-                cls="upload-zone",
+                hx_post="/process/url-to-markdown",
+                hx_target="#url-result",
+                hx_swap="innerHTML",
+                hx_indicator="#url-indicator",
             ),
-            Div(
-                Span(cls="spinner"),
-                Span("Fetching page…"),
-                cls="htmx-indicator",
-                id="url-indicator",
-            ),
-            hx_post="/process/url-to-markdown",
-            hx_target="#url-result",
-            hx_swap="innerHTML",
-            hx_indicator="#url-indicator",
+            cls="url-card",
         ),
         Div(id="url-result"),
-        cls="upload-section",
     )
 
 
@@ -251,15 +267,33 @@ def url_result_display(result, md_filename: str):
     """Result panel for URL extraction."""
     preview_id = f"url-preview-{md_filename[:12]}"
     return Div(
-        P(f"Extracted from {result.url}", cls="alert-success"),
-        *([P(result.title, cls="file-name")] if result.title else []),
+        # ── header ───────────────────────────────────────────────────────
         Div(
-            Span(f"{result.char_count:,} chars", cls="pill"),
-            Span(f"{result.word_count:,} words", cls="pill"),
-            Span(f"{result.processing_time:.1f}s", cls="pill"),
-            cls="file-meta",
-            style="margin-bottom:0.75rem;",
+            *([P(result.title, cls="url-result-title")] if result.title else []),
+            P(result.url, cls="url-result-source"),
+            cls="url-result-header",
         ),
+        # ── metrics ──────────────────────────────────────────────────────
+        Div(
+            Div(
+                P("Characters", cls="metric-label"),
+                P(f"{result.char_count:,}", cls="metric-value"),
+                cls="metric-box",
+            ),
+            Div(
+                P("Words", cls="metric-label"),
+                P(f"{result.word_count:,}", cls="metric-value"),
+                cls="metric-box",
+            ),
+            Div(
+                P("Time", cls="metric-label"),
+                P(f"{result.processing_time:.1f}s", cls="metric-value"),
+                cls="metric-box",
+            ),
+            cls="metrics-row",
+            style="margin-bottom:0.875rem;",
+        ),
+        # ── actions ──────────────────────────────────────────────────────
         Div(
             A(
                 "⬇ Download .md",
@@ -280,6 +314,7 @@ def url_result_display(result, md_filename: str):
             ),
             cls="action-row",
         ),
+        # ── preview ──────────────────────────────────────────────────────
         H4("Preview"),
         Pre(result.markdown, id=preview_id, cls="text-preview"),
         cls="result-area",

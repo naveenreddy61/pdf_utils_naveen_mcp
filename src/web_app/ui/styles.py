@@ -427,16 +427,50 @@ h4 { font-size: 0.8rem; font-weight: 600; margin-bottom: 0.5rem; color: var(--te
 .htmx-request .htmx-indicator,
 .htmx-request.htmx-indicator      { display: inline-flex !important; align-items: center; gap: 0.4rem; }
 
-/* ── URL input section ────────────────────────────────────── */
+/* ── OR divider ───────────────────────────────────────────── */
+.or-divider {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 1.25rem 0 1rem;
+}
+.or-line { flex: 1; height: 1px; background: var(--border); }
+.or-label { font-size: 0.8rem; color: var(--text-muted); white-space: nowrap; }
+
+/* ── URL card ─────────────────────────────────────────────── */
+.url-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 1rem;
+  box-shadow: var(--shadow-sm);
+}
+@media (min-width: 640px) { .url-card { padding: 1.25rem; } }
+
+/* ── URL card header (icon + title + subtitle) ────────────── */
+.url-section-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.875rem;
+}
+.url-section-icon { font-size: 1.5rem; line-height: 1; flex-shrink: 0; }
+.url-section-title { font-weight: 600; font-size: 0.9375rem; margin-bottom: 0.1rem; }
+.url-section-sub   { font-size: 0.8rem; color: var(--text-muted); }
+.url-section-text  { display: flex; flex-direction: column; }
+
+/* ── URL input row ────────────────────────────────────────── */
 .url-input-row {
   display: flex;
   gap: 0.5rem;
-  width: 100%;
-  max-width: 520px;
+  margin-bottom: 0.75rem;
 }
-.url-input {
-  flex: 1;
-  padding: 0.4375rem 0.625rem;
+/* Override the global input[type="text"] { width: 100% } so flex works */
+.url-input-row .url-input {
+  flex: 1 1 0%;
+  width: 0 !important;   /* critical: lets flex-grow decide the width */
+  min-width: 0;
+  padding: 0.5rem 0.75rem;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   font-size: 0.875rem;
@@ -444,30 +478,62 @@ h4 { font-size: 0.8rem; font-weight: 600; margin-bottom: 0.5rem; color: var(--te
   color: var(--text);
   transition: border-color var(--t);
 }
-.url-input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(79,70,229,.15); }
-.url-btn {
-  padding: 0.4375rem 1rem;
-  white-space: nowrap;
-  flex-shrink: 0;
+.url-input-row .url-input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(79,70,229,.15);
 }
+.url-submit-btn { padding: 0.5rem 1.25rem; flex-shrink: 0; }
+
+/* ── URL options (checkboxes + spinner row) ───────────────── */
 .url-options {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.75rem;
-  margin-top: 0.5rem;
-  justify-content: center;
+  align-items: center;
+  gap: 0.375rem 1.25rem;
 }
 .url-option {
   display: inline-flex;
   align-items: center;
-  gap: 0.3rem;
-  font-size: 0.8rem;
+  gap: 0.4rem;
+  font-size: 0.8125rem;
   font-weight: 400;
   color: var(--text-muted);
   cursor: pointer;
   margin: 0;
+  user-select: none;
 }
-.url-option input[type="checkbox"] { width: auto; margin: 0; cursor: pointer; }
+/* Checkboxes: fix size and remove global overrides */
+.url-option input[type="checkbox"] {
+  appearance: auto;
+  -webkit-appearance: checkbox;
+  width: 14px !important;
+  height: 14px !important;
+  min-width: 14px;
+  margin: 0;
+  cursor: pointer;
+  accent-color: var(--primary);
+  flex-shrink: 0;
+}
+.url-spinner {
+  margin-left: auto;
+  font-size: 0.8rem;
+  color: var(--primary);
+  font-weight: 500;
+  gap: 0.35rem;
+}
+
+/* ── URL result header ────────────────────────────────────── */
+.url-result-header { margin-bottom: 0.875rem; }
+.url-result-title  { font-weight: 700; font-size: 1rem; margin-bottom: 0.25rem; }
+.url-result-source {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  word-break: break-all;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
 /* ── Convert-images small gallery ─────────────────────────── */
 .image-gallery {
