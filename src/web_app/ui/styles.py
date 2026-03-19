@@ -427,6 +427,48 @@ h4 { font-size: 0.8rem; font-weight: 600; margin-bottom: 0.5rem; color: var(--te
 .htmx-request .htmx-indicator,
 .htmx-request.htmx-indicator      { display: inline-flex !important; align-items: center; gap: 0.4rem; }
 
+/* ── URL input section ────────────────────────────────────── */
+.url-input-row {
+  display: flex;
+  gap: 0.5rem;
+  width: 100%;
+  max-width: 520px;
+}
+.url-input {
+  flex: 1;
+  padding: 0.4375rem 0.625rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 0.875rem;
+  background: var(--surface);
+  color: var(--text);
+  transition: border-color var(--t);
+}
+.url-input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(79,70,229,.15); }
+.url-btn {
+  padding: 0.4375rem 1rem;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.url-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+  justify-content: center;
+}
+.url-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.8rem;
+  font-weight: 400;
+  color: var(--text-muted);
+  cursor: pointer;
+  margin: 0;
+}
+.url-option input[type="checkbox"] { width: auto; margin: 0; cursor: pointer; }
+
 /* ── Convert-images small gallery ─────────────────────────── */
 .image-gallery {
   display: grid;

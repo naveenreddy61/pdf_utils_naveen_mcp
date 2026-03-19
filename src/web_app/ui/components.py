@@ -192,6 +192,100 @@ def _op_btn(icon: str, label: str, extra_cls: str = "", **htmx_attrs):
     )
 
 
+# ── URL to Markdown ──────────────────────────────────────────────────────────
+
+def url_input_form():
+    """URL input section with options and HTMX submission."""
+    return Div(
+        Form(
+            Div(
+                P("🔗", cls="upload-icon"),
+                Div(
+                    Input(
+                        type="text",
+                        name="url",
+                        placeholder="https://example.com/article",
+                        cls="url-input",
+                        autocomplete="off",
+                    ),
+                    Button("Convert", type="submit", cls="url-btn"),
+                    cls="url-input-row",
+                ),
+                Div(
+                    Label(
+                        Input(type="checkbox", name="include_links",  value="on", checked=True),
+                        " Include links",
+                        cls="url-option",
+                    ),
+                    Label(
+                        Input(type="checkbox", name="include_tables", value="on", checked=True),
+                        " Include tables",
+                        cls="url-option",
+                    ),
+                    Label(
+                        Input(type="checkbox", name="include_images", value="on"),
+                        " Include images",
+                        cls="url-option",
+                    ),
+                    cls="url-options",
+                ),
+                cls="upload-zone",
+            ),
+            Div(
+                Span(cls="spinner"),
+                Span("Fetching page…"),
+                cls="htmx-indicator",
+                id="url-indicator",
+            ),
+            hx_post="/process/url-to-markdown",
+            hx_target="#url-result",
+            hx_swap="innerHTML",
+            hx_indicator="#url-indicator",
+        ),
+        Div(id="url-result"),
+        cls="upload-section",
+    )
+
+
+def url_result_display(result, md_filename: str):
+    """Result panel for URL extraction."""
+    preview_id = f"url-preview-{md_filename[:12]}"
+    return Div(
+        P(f"Extracted from {result.url}", cls="alert-success"),
+        *([P(result.title, cls="file-name")] if result.title else []),
+        Div(
+            Span(f"{result.char_count:,} chars", cls="pill"),
+            Span(f"{result.word_count:,} words", cls="pill"),
+            Span(f"{result.processing_time:.1f}s", cls="pill"),
+            cls="file-meta",
+            style="margin-bottom:0.75rem;",
+        ),
+        Div(
+            A(
+                "⬇ Download .md",
+                href=f"/{md_filename}",
+                download=md_filename,
+                cls="button",
+                style="background:var(--green);",
+            ),
+            Button(
+                "📋 Copy",
+                onclick=(
+                    f"const t=document.getElementById('{preview_id}').textContent;"
+                    f"navigator.clipboard.writeText(t).then(()=>{{"
+                    f"this.textContent='✅ Copied!';this.style.background='var(--green)';"
+                    f"setTimeout(()=>{{this.textContent='📋 Copy';this.style.background='';}},2000);}});"
+                ),
+                cls="button",
+            ),
+            cls="action-row",
+        ),
+        H4("Preview"),
+        Pre(result.markdown, id=preview_id, cls="text-preview"),
+        cls="result-area",
+    )
+
+
 # ── TOC ──────────────────────────────────────────────────────────────────────
 
 def toc_display(toc):

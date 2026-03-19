@@ -20,6 +20,7 @@ from web_app.services.pptx_service import convert_pptx_to_pdf_bytes
 from web_app.ui.components import (
     upload_form, file_info_display, operation_buttons,
     error_message, upload_progress_poll, upload_progress_status,
+    url_input_form,
 )
 
 # Map MIME types / extensions to internal file_type labels
@@ -165,10 +166,11 @@ def setup_routes(app, rt):
         return Titled("PDF & Image Utilities",
             Div(
                 P(
-                    f"PDF · PPT · JPG · PNG · WEBP  ·  max {MAX_FILE_SIZE_MB} MB  ·  files kept 30 days",
+                    f"PDF · PPT · Images · URL to Markdown  ·  max {MAX_FILE_SIZE_MB} MB  ·  files kept 30 days",
                     cls="page-subtitle",
                 ),
                 upload_form(),
+                url_input_form(),
                 cls="app-wrap",
             )
         )

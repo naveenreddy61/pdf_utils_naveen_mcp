@@ -51,6 +51,10 @@ OCR_BATCH_TIMEOUT = 300  # Overall timeout for batch processing (seconds)
 OCR_CACHE_RETENTION_DAYS = 14  # Keep cached OCR results for 2 weeks
 OCR_CACHE_DB_PATH = Path("data/ocr_cache.db")  # SQLite DB for caching
 
+# URL-to-Markdown settings
+URL_FETCH_TIMEOUT = 30   # seconds
+URL_MAX_CONTENT_LENGTH_MB = 10  # skip pages larger than this
+
 # GCS settings for large file upload bypass
 import os as _os
 GCS_BUCKET_NAME: str = _os.getenv("GCS_BUCKET_NAME", "")
