@@ -262,7 +262,7 @@ def url_input_form():
     )
 
 
-def url_result_display(result, md_filename: str):
+def url_result_display(result, md_filename: str, file_content: str):
     """Result panel for URL extraction."""
     preview_id = f"url-preview-{md_filename[:12]}"
     return Div(
@@ -294,10 +294,9 @@ def url_result_display(result, md_filename: str):
         ),
         # ── actions ──────────────────────────────────────────────────────
         Div(
-            A(
+            Button(
                 "⬇ Download .md",
-                href=f"/{md_filename}",
-                download=md_filename,
+                onclick=f"window.location.href='/download/url-md/{md_filename}'",
                 cls="button",
                 style="background:var(--green);",
             ),
@@ -313,9 +312,9 @@ def url_result_display(result, md_filename: str):
             ),
             cls="action-row",
         ),
-        # ── preview ──────────────────────────────────────────────────────
+        # ── preview (shows the full file content with source header/footer) ──
         H4("Preview"),
-        Pre(result.markdown, id=preview_id, cls="text-preview"),
+        Pre(file_content, id=preview_id, cls="text-preview"),
         cls="result-area",
     )
 
