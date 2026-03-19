@@ -33,9 +33,11 @@ def setup_routes(app, rt):
         if result.error:
             return error_message(result.error)
 
-        # Save markdown file for download
+        # Save markdown file for download — wrap with source URL header/footer
         md_filename = f"url_{uuid.uuid4().hex[:8]}.md"
         md_path = UPLOAD_DIR / md_filename
-        md_path.write_text(result.markdown, encoding="utf-8")
+        source_line = f"Source: {result.url}"
+        file_content = f"{source_line}\n\n---\n\n{result.markdown}\n\n---\n\n{source_line}\n"
+        md_path.write_text(file_content, encoding="utf-8")
 
         return url_result_display(result, md_filename)

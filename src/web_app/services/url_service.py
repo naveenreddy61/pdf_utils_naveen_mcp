@@ -61,7 +61,7 @@ def _extract_sync(
     metadata = trafilatura.extract_metadata(downloaded)
     title = metadata.title if metadata else None
 
-    clean_md = trafilatura.extract(
+    raw_md = trafilatura.extract(
         downloaded,
         output_format="markdown",
         include_links=include_links,
@@ -70,6 +70,11 @@ def _extract_sync(
         favor_recall=True,
         with_metadata=False,
     ) or ""
+
+    # Remove excessive blank lines (3+ → 2) and trailing spaces
+    import re
+    clean_md = re.sub(r'\n{3,}', '\n\n', raw_md)
+    clean_md = re.sub(r'[ \t]+\n', '\n', clean_md).strip()
 
     elapsed = time.perf_counter() - start
     return UrlExtractionResult(
