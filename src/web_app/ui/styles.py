@@ -459,68 +459,26 @@ h4 { font-size: 0.8rem; font-weight: 600; margin-bottom: 0.5rem; color: var(--te
 .url-section-sub   { font-size: 0.8rem; color: var(--text-muted); }
 .url-section-text  { display: flex; flex-direction: column; }
 
-/* ── URL input row ────────────────────────────────────────── */
-.url-input-row {
-  display: flex;
-  gap: 0.5rem;
-  margin-bottom: 0.75rem;
-}
-/* Override the global input[type="text"] { width: 100% } so flex works */
-.url-input-row .url-input {
-  flex: 1 1 0%;
-  width: 0 !important;   /* critical: lets flex-grow decide the width */
-  min-width: 0;
-  padding: 0.5rem 0.75rem;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  font-size: 0.875rem;
-  background: var(--surface);
-  color: var(--text);
-  transition: border-color var(--t);
-}
-.url-input-row .url-input:focus {
-  outline: none;
-  border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgba(79,70,229,.15);
-}
-.url-submit-btn { padding: 0.5rem 1.25rem; flex-shrink: 0; }
-
-/* ── URL options (checkboxes + spinner row) ───────────────── */
+/* ── URL options (checkboxes row) ─────────────────────────── */
 .url-options {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 0.375rem 1.25rem;
 }
-.url-option {
+.url-options label {
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: 0.35rem;
   font-size: 0.8125rem;
   font-weight: 400;
   color: var(--text-muted);
   cursor: pointer;
   margin: 0;
-  user-select: none;
 }
-/* Checkboxes: fix size and remove global overrides */
-.url-option input[type="checkbox"] {
-  appearance: auto;
-  -webkit-appearance: checkbox;
-  width: 14px !important;
-  height: 14px !important;
-  min-width: 14px;
-  margin: 0;
-  cursor: pointer;
+.url-options input[type="checkbox"] {
+  width: auto;
   accent-color: var(--primary);
-  flex-shrink: 0;
-}
-.url-spinner {
-  margin-left: auto;
-  font-size: 0.8rem;
-  color: var(--primary);
-  font-weight: 500;
-  gap: 0.35rem;
 }
 
 /* ── URL result header ────────────────────────────────────── */

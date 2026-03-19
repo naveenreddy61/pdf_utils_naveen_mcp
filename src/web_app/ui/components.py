@@ -217,38 +217,37 @@ def url_input_form():
                 cls="url-section-header",
             ),
             Form(
-                Div(
-                    Input(
-                        type="text",
-                        name="url",
-                        placeholder="https://example.com/article",
-                        cls="url-input",
-                        autocomplete="off",
-                    ),
-                    Button("Convert", type="submit", cls="url-submit-btn"),
-                    cls="url-input-row",
+                Input(
+                    type="text",
+                    name="url",
+                    placeholder="https://example.com/article",
+                    autocomplete="off",
+                    style="margin-bottom:0.5rem;",
+                ),
+                Button(
+                    "Convert to Markdown",
+                    type="submit",
+                    style="width:100%;justify-content:center;margin-bottom:0.625rem;",
                 ),
                 Div(
                     Label(
                         Input(type="checkbox", name="include_links",  value="on", checked=True),
-                        "Links",
-                        cls="url-option",
+                        " Links",
                     ),
                     Label(
                         Input(type="checkbox", name="include_tables", value="on", checked=True),
-                        "Tables",
-                        cls="url-option",
+                        " Tables",
                     ),
                     Label(
                         Input(type="checkbox", name="include_images", value="on"),
-                        "Images",
-                        cls="url-option",
+                        " Images",
                     ),
                     Div(
                         Span(cls="spinner"),
                         Span("Fetching…"),
                         id="url-indicator",
-                        cls="htmx-indicator url-spinner",
+                        cls="htmx-indicator",
+                        style="color:var(--primary);font-size:0.8rem;font-weight:500;gap:0.35rem;",
                     ),
                     cls="url-options",
                 ),
