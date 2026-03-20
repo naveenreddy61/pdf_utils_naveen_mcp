@@ -204,7 +204,7 @@ def url_input_form():
             Div(cls="or-line"),
             cls="or-divider",
         ),
-        # ── card ─────────────────────────────────────────────────────────
+        # ── URL to Markdown card ──────────────────────────────────────────
         Div(
             Div(
                 Span("🔗", cls="url-section-icon"),
@@ -259,6 +259,50 @@ def url_input_form():
             cls="url-card",
         ),
         Div(id="url-result"),
+        # ── URL to PDF OCR card ───────────────────────────────────────────
+        Div(
+            Div(
+                Span("🖨️", cls="url-section-icon"),
+                Div(
+                    P("URL via Browser + OCR", cls="url-section-title"),
+                    P("Renders page in headless Chrome, prints to PDF, then runs AI OCR — handles JS, cookie banners & pop-ups",
+                      cls="url-section-sub"),
+                    cls="url-section-text",
+                ),
+                cls="url-section-header",
+            ),
+            Form(
+                Input(
+                    type="text",
+                    name="url",
+                    placeholder="https://example.com/article",
+                    autocomplete="off",
+                    style="margin-bottom:0.5rem;",
+                ),
+                Button(
+                    "Convert via Browser (OCR)",
+                    type="submit",
+                    style="width:100%;justify-content:center;margin-bottom:0.625rem;background:var(--purple);",
+                ),
+                Div(
+                    Div(
+                        Span(cls="spinner"),
+                        Span("Rendering page…"),
+                        id="url-pdf-indicator",
+                        cls="htmx-indicator",
+                        style="color:var(--purple);font-size:0.8rem;font-weight:500;gap:0.35rem;",
+                    ),
+                    cls="url-options",
+                ),
+                hx_post="/process/url-to-pdf-ocr",
+                hx_target="#url-pdf-result",
+                hx_swap="innerHTML",
+                hx_indicator="#url-pdf-indicator",
+            ),
+            cls="url-card",
+            style="margin-top:0.75rem;",
+        ),
+        Div(id="url-pdf-result"),
     )
 
 
@@ -313,6 +357,105 @@ def url_result_display(result, md_filename: str, file_content: str):
             cls="action-row",
         ),
         # ── preview (shows the full file content with source header/footer) ──
+        H4("Preview"),
+        Pre(file_content, id=preview_id, cls="text-preview"),
+        cls="result-area",
+    )
+
+
+def url_pdf_ocr_result_display(result, txt_filename: str, file_content: str):
+    """Result panel for URL-to-PDF-OCR extraction."""
+    preview_id = f"url-pdf-preview-{txt_filename[:16]}"
+
+    # Quality badge styling
+    quality_colors = {
+        "GOOD":    ("var(--green)",   "var(--green-light)"),
+        "POOR":    ("var(--orange)",  "var(--orange-light)"),
+        "BLOCKED": ("var(--red)",     "var(--red-light)"),
+        "UNKNOWN": ("var(--text-muted)", "var(--surface-alt)"),
+    }
+    q = result.quality or "UNKNOWN"
+    q_color, q_bg = quality_colors.get(q, quality_colors["UNKNOWN"])
+    quality_icons = {"GOOD": "✅", "POOR": "⚠️", "BLOCKED": "🚫", "UNKNOWN": "❓"}
+    q_icon = quality_icons.get(q, "❓")
+
+    return Div(
+        # ── header ───────────────────────────────────────────────────────
+        Div(
+            *([P(result.title, cls="url-result-title")] if result.title else []),
+            P(result.url, cls="url-result-source"),
+            cls="url-result-header",
+        ),
+        # ── quality badge ────────────────────────────────────────────────
+        Div(
+            Span(
+                f"{q_icon} Capture quality: {q}",
+                style=(
+                    f"display:inline-block;padding:0.25rem 0.75rem;"
+                    f"border-radius:99px;font-size:0.8rem;font-weight:600;"
+                    f"color:{q_color};background:{q_bg};"
+                ),
+            ),
+            P(result.quality_reason,
+              style="font-size:0.78rem;color:var(--text-muted);margin-top:0.3rem;"),
+            style="margin-bottom:0.75rem;",
+        ),
+        # ── metrics ──────────────────────────────────────────────────────
+        Div(
+            Div(
+                P("Pages", cls="metric-label"),
+                P(str(result.page_count), cls="metric-value"),
+                cls="metric-box",
+            ),
+            Div(
+                P("Characters", cls="metric-label"),
+                P(f"{result.char_count:,}", cls="metric-value"),
+                cls="metric-box",
+            ),
+            Div(
+                P("Words", cls="metric-label"),
+                P(f"{result.word_count:,}", cls="metric-value"),
+                cls="metric-box",
+            ),
+            Div(
+                P("Time", cls="metric-label"),
+                P(f"{result.processing_time:.1f}s", cls="metric-value"),
+                cls="metric-box",
+            ),
+            cls="metrics-row",
+            style="margin-bottom:0.5rem;",
+        ),
+        # ── token metrics ─────────────────────────────────────────────────
+        Div(
+            Span(
+                f"Tokens in: {result.total_input_tokens:,} · out: {result.total_output_tokens:,}"
+                + (f" · saved: {result.tokens_saved:,}" if result.tokens_saved else "")
+                + (f" · cached pages: {result.cached_pages}" if result.cached_pages else ""),
+                style="font-size:0.75rem;color:var(--text-muted);",
+            ),
+            style="margin-bottom:0.875rem;",
+        ) if result.total_input_tokens else Div(),
+        # ── actions ──────────────────────────────────────────────────────
+        Div(
+            Button(
+                "⬇ Download .txt",
+                onclick=f"window.location.href='/download/url-pdf-text/{txt_filename}'",
+                cls="button",
+                style="background:var(--purple);",
+            ),
+            Button(
+                "📋 Copy",
+                onclick=(
+                    f"const t=document.getElementById('{preview_id}').textContent;"
+                    f"navigator.clipboard.writeText(t).then(()=>{{"
+                    f"this.textContent='✅ Copied!';this.style.background='var(--green)';"
+                    f"setTimeout(()=>{{this.textContent='📋 Copy';this.style.background='';}},2000);}});"
+                ),
+                cls="button",
+            ),
+            cls="action-row",
+        ),
+        # ── preview ───────────────────────────────────────────────────────
         H4("Preview"),
         Pre(file_content, id=preview_id, cls="text-preview"),
         cls="result-area",

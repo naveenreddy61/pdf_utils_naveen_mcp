@@ -55,6 +55,13 @@ OCR_CACHE_DB_PATH = Path("data/ocr_cache.db")  # SQLite DB for caching
 URL_FETCH_TIMEOUT = 30   # seconds
 URL_MAX_CONTENT_LENGTH_MB = 10  # skip pages larger than this
 
+# URL-to-PDF-OCR settings (browser-based capture)
+URL_PDF_BROWSER_TIMEOUT = 30000      # ms: page navigation + network idle timeout
+URL_PDF_PRINT_WAIT_MS = 1500         # ms: wait after scroll for popups to appear
+URL_PDF_QUALITY_CHECK_ENABLED = True # Run LLM quality check before full OCR
+# Optional: path to a Chromium/Chrome binary; leave empty to use playwright default
+URL_PDF_CHROMIUM_EXECUTABLE = ""
+
 # GCS settings for large file upload bypass
 import os as _os
 GCS_BUCKET_NAME: str = _os.getenv("GCS_BUCKET_NAME", "")

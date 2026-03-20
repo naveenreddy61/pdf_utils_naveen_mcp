@@ -15,6 +15,7 @@ dependencies = [
     "google-genai>=1.31.0",
     "litellm>=1.75.0",
     "pillow>=11.3.0",
+    "playwright>=1.58.0",
     "PyMuPDF>=1.24.0",
     "pymupdf4llm>=0.0.27",
     "pypandoc>=1.15",
