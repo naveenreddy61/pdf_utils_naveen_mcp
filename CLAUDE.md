@@ -24,9 +24,14 @@ The project includes a FastHTML web application (`src/web_app/`) for browser-bas
 - **Routes**: `src/web_app/routes/` - HTTP endpoints for operations
   - `main.py`: File upload and main page
   - `pdf.py`: PDF processing operations (TOC, text, images, etc.)
+  - `url.py`: URL-to-Markdown and URL-to-PDF-OCR routes
   - `api.py`: API endpoints
 - **UI Components**: `src/web_app/ui/components.py` - Reusable UI elements
-- **Services**: `src/web_app/services/pdf_service.py` - Core PDF operations
+- **Services**: `src/web_app/services/` - Core service layer
+  - `pdf_service.py`: PDF operations (extract, convert, etc.)
+  - `ocr_service.py`: GenAI OCR with caching, retries, and fallback
+  - `url_service.py`: URL-to-Markdown via trafilatura
+  - `url_pdf_service.py`: URL-to-PDF-OCR via headless Chromium + OCR
 - **Styles**: `src/web_app/ui/styles.py` - CSS styles
 
 ### Running the Web App:
@@ -44,13 +49,81 @@ Key commands:
 ### Important Patterns:
 - Use HTMX for page updates (`hx_post`, `hx_get`, `hx_target`)
 - Use JavaScript `window.location.href` for file downloads (NOT HTMX)
+- For server-saved files: `window.location.href='/download/route/filename'`
+- For clipboard copy of large content: `fetch('/download/route/filename').then(r=>r.text()).then(t=>navigator.clipboard.writeText(t))`
+  (do NOT read from DOM `.textContent` — browser clipboard API has size limits)
 - Images are served from `uploads/` directory
 - In-memory processing preferred for performance
+
+## URL Processing Architecture
+
+The app exposes two URL-based extraction modes from the main page:
+
+### URL-to-Markdown (`url_service.py`)
+Uses **trafilatura** to fetch and extract article text from any URL.
+- Runs sync trafilatura in a thread pool via `asyncio.to_thread()`
+- Returns `UrlExtractionResult` with title, clean markdown, word/char counts
+- Route: `POST /process/url-to-markdown` → download at `GET /download/url-md/{filename}`
+
+### URL-to-PDF-OCR (`url_pdf_service.py`)
+Full pipeline: headless browser → PDF → LLM OCR. Handles JS-heavy pages, cookie banners, and pop-ups.
+
+**Pipeline steps:**
+1. **Browser capture** (`_capture_pdf_async`): Launch headless Chromium via Playwright, dismiss consent banners (CSS injection + JS button clicking), print page to PDF bytes
+2. **Quality check** (`check_pdf_quality`): Extract first 2 pages with PyMuPDF, ask Gemini to classify as GOOD / POOR / BLOCKED
+3. **Retry capture** (if POOR/BLOCKED): Re-run with aggressive CSS that hides all fixed/sticky overlays
+4. **OCR** (`process_document_async` from `ocr_service.py`): Full GenAI OCR with caching and retries
+5. **Result**: `UrlPdfOcrResult` with quality badge, page/token metrics, and full extracted text
+- Route: `POST /process/url-to-pdf-ocr` → download at `GET /download/url-pdf-text/{filename}`
+
+### Playwright / Headless Chromium Setup
+
+**Install (one-time):**
+```bash
+# Install Playwright Python package
+uv add playwright
+
+# Download the headless Chromium browser binary (~200 MB)
+uv run playwright install chromium
+
+# Install required OS-level system dependencies
+uv run playwright install-deps chromium
+```
+
+**Or use the Makefile target:**
+```bash
+make install-playwright
+```
+
+**Verify Chromium is available:**
+```bash
+make chrome-path
+# Expected: /root/.cache/ms-playwright/chromium-XXXX/chrome-linux/chrome
+
+make test-env
+# Checks API key + GenAI import + Playwright binary
+```
+
+**On Debian/Ubuntu VPS without GUI (headless is fine):**
+```bash
+# Install OS deps that Chromium needs to run headlessly
+uv run playwright install-deps chromium
+# This installs packages like: libnss3, libatk1.0-0, libgbm1, etc.
+```
+
+**Configuration (`config.py`):**
+```python
+URL_PDF_BROWSER_TIMEOUT = 30000      # ms: page load timeout
+URL_PDF_PRINT_WAIT_MS   = 1500       # ms: delay after scroll (lets pop-ups appear)
+URL_PDF_QUALITY_CHECK_ENABLED = True # LLM quality assessment before full OCR
+URL_PDF_CHROMIUM_EXECUTABLE = ""     # leave empty to use playwright's own binary
+```
 
 ## Prerequisites
 
 - **Python 3.12+**: Required for the server.
 - **uv**: Recommended for environment and package management.
+- **Playwright Chromium**: Required for URL-to-PDF-OCR feature (see above).
 
 ## Environment Configuration
 
@@ -84,6 +157,27 @@ uv run python -c "import os; print('✅ API key found' if os.getenv('GOOGLE_API_
 
 - **Run server locally**: `uv run pdf-mcp-server`
 - **Install dependencies**: `uv sync`
+
+### Makefile Quick Reference
+
+A `Makefile` at the project root wraps all common workflows:
+
+```bash
+make dev                  # Start local dev server
+make install              # Install all dependencies (uv sync)
+make install-playwright   # Install Playwright + headless Chromium
+make chrome-path          # Print path to Playwright's Chromium binary
+make test                 # Run OCR service test suite
+make test-env             # Verify API key + GenAI + Playwright
+make restart              # Restart VPS pdf-app service
+make logs                 # Tail live VPS logs
+make logs-100             # Last 100 log lines
+make deploy               # git push + restart VPS service
+make build                # Build distributable wheel
+make db-stats             # OCR cache row count + token savings
+make db-clear             # Delete OCR cache (forces full re-OCR)
+make clean                # Remove build artifacts
+```
 
 ## Development Workflow
 

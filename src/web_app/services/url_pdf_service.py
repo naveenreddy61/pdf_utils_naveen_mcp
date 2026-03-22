@@ -4,7 +4,7 @@ import asyncio
 import os
 import time
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
@@ -18,9 +18,20 @@ from pdf_utils.config import (
     URL_PDF_QUALITY_CHECK_ENABLED,
     URL_PDF_CHROMIUM_EXECUTABLE,
     OCR_MODEL,
+    OCR_TIMEOUT,
+    OCR_TEMPERATURE,
 )
 
 load_dotenv()
+
+# ── Module-level GenAI client (same pattern as ocr_service.py) ────────────────
+_api_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
+if _api_key:
+    from google import genai as _genai
+    from google.genai import types as _types
+    _client = _genai.Client()
+else:
+    _client = None
 
 
 # ── Result dataclass ──────────────────────────────────────────────────────────
@@ -254,8 +265,7 @@ async def check_pdf_quality(pdf_bytes: bytes) -> tuple[str, str]:
     if not URL_PDF_QUALITY_CHECK_ENABLED:
         return "UNKNOWN", "Quality check disabled."
 
-    api_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
-    if not api_key:
+    if _client is None:
         return "UNKNOWN", "No API key configured for quality check."
 
     # Extract text from first 2 pages with PyMuPDF (fast, no API cost)
@@ -277,19 +287,17 @@ async def check_pdf_quality(pdf_bytes: bytes) -> tuple[str, str]:
     full_prompt = prompt + "\n" + sample_text
 
     try:
-        from google import genai
-        from google.genai import types
-
-        client = genai.Client()
-        response = await asyncio.to_thread(
-            lambda: client.models.generate_content(
+        # Use native async API + timeout, matching ocr_service.py pattern
+        response = await asyncio.wait_for(
+            _client.aio.models.generate_content(
                 model=OCR_MODEL,
                 contents=full_prompt,
-                config=types.GenerateContentConfig(
-                    temperature=0.1,
+                config=_types.GenerateContentConfig(
+                    temperature=OCR_TEMPERATURE,
                     max_output_tokens=100,
                 ),
-            )
+            ),
+            timeout=OCR_TIMEOUT,
         )
         reply = response.text.strip() if response.text else ""
 
