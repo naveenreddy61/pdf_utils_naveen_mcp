@@ -338,9 +338,10 @@ def url_result_display(result, md_filename: str, file_content: str):
         ),
         # ── actions ──────────────────────────────────────────────────────
         Div(
-            Button(
+            A(
                 "⬇ Download .md",
-                onclick=f"window.location.href='/download/url-md/{md_filename}'",
+                href=f"/{md_filename}",
+                download=md_filename,
                 cls="button",
                 style="background:var(--green);",
             ),
@@ -436,18 +437,11 @@ def url_pdf_ocr_result_display(result, txt_filename: str, file_content: str):
             style="margin-bottom:0.875rem;",
         ) if result.total_input_tokens else Div(),
         # ── actions ──────────────────────────────────────────────────────
-        # Note: /{txt_filename} works because static_path='uploads' serves files
-        # at the root. The /download/url-pdf-text/ route is intercepted by
-        # FastHTML's {ext:static} converter for .txt files before it can match.
         Div(
-            Button(
+            A(
                 "⬇ Download .txt",
-                onclick=(
-                    f"const a=document.createElement('a');"
-                    f"a.href='/{txt_filename}';"
-                    f"a.download='{txt_filename}';"
-                    f"a.click();"
-                ),
+                href=f"/{txt_filename}",
+                download=txt_filename,
                 cls="button",
                 style="background:var(--purple);",
             ),

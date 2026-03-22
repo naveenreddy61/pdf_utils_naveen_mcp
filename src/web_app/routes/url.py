@@ -2,7 +2,6 @@
 
 import uuid
 from starlette.requests import Request
-from starlette.responses import Response
 from fasthtml.common import *
 from pdf_utils.config import UPLOAD_DIR
 from web_app.services.url_service import extract_url_to_markdown
@@ -44,20 +43,6 @@ def setup_routes(app, rt):
 
         return url_result_display(result, md_filename, file_content)
 
-    @rt('/download/url-md/{filename}')
-    def download_url_md(filename: str):
-        if not filename.startswith('url_') or not filename.endswith('.md'):
-            return Response("Not found", status_code=404)
-        file_path = UPLOAD_DIR / filename
-        if not file_path.exists():
-            return Response("File not found", status_code=404)
-        content = file_path.read_text(encoding="utf-8")
-        return Response(
-            content,
-            media_type="text/plain; charset=utf-8",
-            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-        )
-
     @rt('/process/url-to-pdf-ocr', methods=['POST'])
     async def process_url_pdf_ocr(request: Request):
         form = await request.form()
@@ -81,17 +66,3 @@ def setup_routes(app, rt):
         txt_path.write_text(file_content, encoding="utf-8")
 
         return url_pdf_ocr_result_display(result, txt_filename, file_content)
-
-    @rt('/download/url-pdf-text/{filename}')
-    def download_url_pdf_text(filename: str):
-        if not filename.startswith('url_ocr_') or not filename.endswith('.txt'):
-            return Response("Not found", status_code=404)
-        file_path = UPLOAD_DIR / filename
-        if not file_path.exists():
-            return Response("File not found", status_code=404)
-        content = file_path.read_text(encoding="utf-8")
-        return Response(
-            content,
-            media_type="text/plain; charset=utf-8",
-            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-        )
