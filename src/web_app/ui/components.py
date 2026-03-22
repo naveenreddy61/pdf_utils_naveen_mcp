@@ -436,10 +436,18 @@ def url_pdf_ocr_result_display(result, txt_filename: str, file_content: str):
             style="margin-bottom:0.875rem;",
         ) if result.total_input_tokens else Div(),
         # ── actions ──────────────────────────────────────────────────────
+        # Note: /{txt_filename} works because static_path='uploads' serves files
+        # at the root. The /download/url-pdf-text/ route is intercepted by
+        # FastHTML's {ext:static} converter for .txt files before it can match.
         Div(
             Button(
                 "⬇ Download .txt",
-                onclick=f"window.location.href='/download/url-pdf-text/{txt_filename}'",
+                onclick=(
+                    f"const a=document.createElement('a');"
+                    f"a.href='/{txt_filename}';"
+                    f"a.download='{txt_filename}';"
+                    f"a.click();"
+                ),
                 cls="button",
                 style="background:var(--purple);",
             ),
@@ -447,7 +455,7 @@ def url_pdf_ocr_result_display(result, txt_filename: str, file_content: str):
                 "📋 Copy",
                 onclick=(
                     f"const btn=this;"
-                    f"fetch('/download/url-pdf-text/{txt_filename}')"
+                    f"fetch('/{txt_filename}')"
                     f".then(r=>r.text())"
                     f".then(t=>navigator.clipboard.writeText(t))"
                     f".then(()=>{{"
