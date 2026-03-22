@@ -55,6 +55,11 @@ _BANNER_HIDE_CSS = """
 *[id*="modal" i], *[id*="paywall" i], *[id*="signup" i],
 *[class*="paywall" i], *[class*="subscribe" i],
 *[class*="sticky" i][style*="bottom"],
+*[class*="login-prompt" i], *[class*="signin-prompt" i],
+*[class*="registration" i], *[class*="gate" i],
+*[id*="login-prompt" i], *[id*="gate" i],
+*[class*="notification-bar" i], *[class*="announcement" i],
+*[class*="toast" i], *[class*="snackbar" i],
 div[role="dialog"], div[role="alertdialog"],
 div[aria-modal="true"] {
     display: none !important;
@@ -165,17 +170,32 @@ async def _capture_pdf_async(url: str, aggressive: bool = False) -> tuple[bytes,
 
         # JS-based text matching for buttons that don't have obvious classes
         await page.evaluate("""() => {
-            const acceptTexts = ['accept all', 'accept cookies', 'i accept', 'agree',
-                                 'got it', 'ok, got it', 'allow all', 'allow cookies',
-                                 'continue', 'proceed', 'i understand'];
-            const buttons = [...document.querySelectorAll('button, a[role="button"]')];
-            for (const btn of buttons) {
+            const acceptTexts = [
+                'accept all', 'accept cookies', 'accept all cookies', 'i accept', 'agree',
+                'i agree', 'agree to all', 'got it', 'ok, got it', 'ok got it',
+                'allow all', 'allow cookies', 'allow all cookies',
+                'continue', 'proceed', 'i understand', 'understood',
+                'close', 'dismiss', 'no thanks', 'maybe later', 'not now',
+                'x', 'done', 'ok', 'yes', 'confirm',
+            ];
+            const elements = [...document.querySelectorAll('button, a[role="button"], [role="button"]')];
+            for (const btn of elements) {
                 const text = btn.textContent.trim().toLowerCase();
                 if (acceptTexts.some(t => text === t || text.startsWith(t))) {
                     btn.click();
                     break;
                 }
             }
+            // Also remove any element with z-index > 100 that covers most of viewport
+            document.querySelectorAll('*').forEach(el => {
+                const style = window.getComputedStyle(el);
+                const zIndex = parseInt(style.zIndex);
+                if (zIndex > 100 && (style.position === 'fixed' || style.position === 'sticky')) {
+                    const rect = el.getBoundingClientRect();
+                    const coverage = (rect.width * rect.height) / (window.innerWidth * window.innerHeight);
+                    if (coverage > 0.3) el.style.display = 'none';
+                }
+            });
         }""")
         await asyncio.sleep(0.5)
 

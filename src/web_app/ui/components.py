@@ -446,10 +446,13 @@ def url_pdf_ocr_result_display(result, txt_filename: str, file_content: str):
             Button(
                 "📋 Copy",
                 onclick=(
-                    f"const t=document.getElementById('{preview_id}').textContent;"
-                    f"navigator.clipboard.writeText(t).then(()=>{{"
-                    f"this.textContent='✅ Copied!';this.style.background='var(--green)';"
-                    f"setTimeout(()=>{{this.textContent='📋 Copy';this.style.background='';}},2000);}});"
+                    f"const btn=this;"
+                    f"fetch('/download/url-pdf-text/{txt_filename}')"
+                    f".then(r=>r.text())"
+                    f".then(t=>navigator.clipboard.writeText(t))"
+                    f".then(()=>{{"
+                    f"btn.textContent='✅ Copied!';btn.style.background='var(--green)';"
+                    f"setTimeout(()=>{{btn.textContent='📋 Copy';btn.style.background='';}},2000);}});"
                 ),
                 cls="button",
             ),

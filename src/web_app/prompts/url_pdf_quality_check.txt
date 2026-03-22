@@ -1,10 +1,29 @@
-You are evaluating whether a PDF printed from a web page contains the actual article/page content or is primarily obstructed by overlays.
+You are evaluating whether a PDF printed from a web page captured its actual content, or whether it was blocked/obscured by overlays.
 
-Examine the text below (extracted from the first 1-2 pages of the PDF) and classify the capture quality:
+Examine the text below (extracted from the first 1-2 pages of the PDF) and classify:
 
-- **GOOD**: The text clearly contains the main article or page content (paragraphs, headings, useful information). Minor UI elements are acceptable.
-- **POOR**: The text is mostly or entirely UI noise — cookie consent dialogs, subscribe pop-ups, login walls, navigation menus, or footers — with little to no main content visible.
-- **BLOCKED**: The page is explicitly blocked: paywall message, access denied, CAPTCHA, or "please subscribe to read" with no article text.
+- **GOOD**: The text is the real content of the page. This includes:
+  - Articles, blog posts, news stories
+  - Code repositories (file listings, README content, source code, commit messages)
+  - Documentation, wikis, reference pages
+  - Product pages, company sites, landing pages
+  - Search results, directory listings
+  - Any other page where the main purpose is visible and readable
+  Minor nav bars, headers, or footers mixed in are fine.
+
+- **POOR**: The visible text is mostly or entirely UI noise with little real content:
+  - Dominated by cookie consent dialogs filling most of the page
+  - Mostly subscribe/newsletter pop-ups with no page content below
+  - Primarily navigation menus or sidebars with no body content
+  - Login/sign-in form is prominent but there is still some page content visible
+
+- **BLOCKED**: The page is completely inaccessible:
+  - Full-page paywall ("subscribe to continue reading", "your free articles are used up")
+  - Full-page login wall ("you must be signed in to view this")
+  - CAPTCHA or bot-detection page
+  - Access denied / 403 / rate-limit page
+
+Key rule: If you can read the actual purpose/content of the page — even if it is a repo file tree, a product listing, or a code file — that is GOOD. Only mark POOR or BLOCKED when real content is genuinely hidden.
 
 Reply in this exact format (no extra text):
 QUALITY: <GOOD|POOR|BLOCKED>
