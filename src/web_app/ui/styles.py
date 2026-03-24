@@ -204,7 +204,7 @@ main > h1, main.container > h1 {
   margin-top: 0.875rem;
 }
 @media (min-width: 480px) { .ops-grid { grid-template-columns: repeat(3, 1fr); } }
-@media (min-width: 700px) { .ops-grid { grid-template-columns: repeat(6, 1fr); } }
+@media (min-width: 700px) { .ops-grid { grid-template-columns: repeat(7, 1fr); } }
 
 /* ── Op button (icon + label card) ───────────────────────── */
 .op-btn {
@@ -236,6 +236,8 @@ main > h1, main.container > h1 {
 .op-btn.green:hover  { background: var(--green-light);  color: var(--green);  border-color: var(--green); }
 .op-btn.purple       { border-color: #c4b5fd; }
 .op-btn.purple:hover { background: var(--purple-light); color: var(--purple); border-color: var(--purple); }
+.op-btn.orange       { border-color: #fdba74; }
+.op-btn.orange:hover { background: var(--orange-light); color: var(--orange); border-color: var(--orange); }
 
 /* ── Generic action button ────────────────────────────────── */
 button, .button {

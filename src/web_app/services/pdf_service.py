@@ -134,6 +134,43 @@ def extract_text_markdown(source_path: Path, start_page: int, end_page: int) -> 
     return pymupdf4llm.to_markdown(source_path, pages=pages_list)
 
 
+def compute_chapter_ranges(toc: List[Tuple[int, str, int]], total_pages: int) -> List[Dict]:
+    """
+    Compute page ranges for each top-level chapter from a TOC.
+
+    Returns list of dicts: {"index": 1, "title": "...", "start_page": N, "end_page": M}
+    """
+    if not toc:
+        return []
+
+    # Find the minimum level (usually 1 = chapters)
+    min_level = min(entry[0] for entry in toc)
+    top_entries = [(title, page) for level, title, page in toc if level == min_level]
+
+    if not top_entries:
+        return []
+
+    chapters = []
+    for i, (title, start_page) in enumerate(top_entries):
+        if i + 1 < len(top_entries):
+            end_page = top_entries[i + 1][1] - 1
+        else:
+            end_page = total_pages
+
+        # Skip degenerate ranges
+        if end_page < start_page:
+            continue
+
+        chapters.append({
+            "index": len(chapters) + 1,
+            "title": title,
+            "start_page": start_page,
+            "end_page": end_page,
+        })
+
+    return chapters
+
+
 def get_page_count(file_path: Path) -> int:
     """Get the number of pages in a PDF file."""
     doc = pymupdf.open(file_path)

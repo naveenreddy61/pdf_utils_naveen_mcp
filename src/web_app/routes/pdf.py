@@ -4,13 +4,18 @@ from typing import Optional
 from pathlib import Path
 import zipfile
 import io
+import re
+import time
 from fasthtml.common import *
 from starlette.responses import StreamingResponse
 from pdf_utils.config import UPLOAD_DIR, MIN_DPI, MAX_DPI, DEFAULT_DPI
 from web_app.core.database import get_file_info
 from web_app.core.utils import count_tokens
 from web_app.services import pdf_service
-from web_app.ui.components import error_message, toc_display, image_extraction_gallery, ocr_result_display
+from web_app.ui.components import (
+    error_message, toc_display, image_extraction_gallery, ocr_result_display,
+    chapters_form_display, chapters_result_display,
+)
 from web_app.services import ocr_service
 
 
@@ -757,3 +762,97 @@ def setup_routes(app, rt):
             import traceback
             traceback.print_exc()
             return Div(error_message(f"Error extracting text from image: {str(e)}"))
+
+
+    @rt('/download-chapters-form/{file_hash}')
+    def download_chapters_form(file_hash: str):
+        """Show chapter list derived from TOC, with download button."""
+        try:
+            file_info = get_file_info(file_hash)
+            if not file_info:
+                return Div(error_message("File not found."))
+
+            file_path = UPLOAD_DIR / file_info.stored_filename
+            toc = pdf_service.extract_toc(file_path)
+            chapters = pdf_service.compute_chapter_ranges(toc, file_info.page_count)
+            return chapters_form_display(chapters, file_hash)
+
+        except Exception as e:
+            return Div(error_message(f"Error reading TOC: {str(e)}"))
+
+
+    @rt('/process/download-chapters/{file_hash}')
+    async def process_download_chapters(file_hash: str, request):
+        """OCR selected chapters and return a ZIP of .md files."""
+        try:
+            file_info = get_file_info(file_hash)
+            if not file_info:
+                return Div(error_message("File not found."))
+
+            # Parse selected chapter indices from checkboxes
+            form_data = await request.form()
+            selected_indices = {int(v) for v in form_data.getlist("chapters")}
+
+            if not selected_indices:
+                return Div(error_message("No chapters selected."))
+
+            file_path = UPLOAD_DIR / file_info.stored_filename
+            toc = pdf_service.extract_toc(file_path)
+            all_chapters = pdf_service.compute_chapter_ranges(toc, file_info.page_count)
+            chapters = [ch for ch in all_chapters if ch["index"] in selected_indices]
+
+            if not chapters:
+                return Div(error_message("No matching chapters found."))
+
+            t0 = time.time()
+            chapter_results = []
+            zip_buf = io.BytesIO()
+
+            with zipfile.ZipFile(zip_buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+                for ch in chapters:
+                    try:
+                        results = await ocr_service.process_pages_async_batch(
+                            file_path, ch["start_page"], ch["end_page"],
+                        )
+                        text = results.get("full_text", "")
+                        # Sanitise title for filename
+                        safe = re.sub(r'[^\w\s-]', '', ch["title"]).strip()
+                        safe = re.sub(r'\s+', '_', safe)[:60]
+                        fname = f'{ch["index"]:02d}_{safe}.md'
+                        zf.writestr(fname, text)
+
+                        cached_count = len(results.get("cached_pages", []))
+                        chapter_results.append({
+                            "title": ch["title"],
+                            "ok": True,
+                            "pages": ch["end_page"] - ch["start_page"] + 1,
+                            "input_tokens": results.get("total_input_tokens", 0),
+                            "output_tokens": results.get("total_output_tokens", 0),
+                            "cached_count": cached_count,
+                        })
+                    except Exception as exc:
+                        print(f"Chapter OCR failed: {ch['title']}: {exc}")
+                        chapter_results.append({
+                            "title": ch["title"],
+                            "ok": False,
+                            "pages": ch["end_page"] - ch["start_page"] + 1,
+                            "input_tokens": 0,
+                            "output_tokens": 0,
+                            "cached_count": 0,
+                        })
+
+            total_time = time.time() - t0
+
+            # Save ZIP to uploads dir
+            stem = file_info.stored_filename.rsplit('.', 1)[0]
+            zip_filename = f"chapters_{stem}.zip"
+            zip_path = UPLOAD_DIR / zip_filename
+            zip_path.write_bytes(zip_buf.getvalue())
+
+            return chapters_result_display(chapter_results, zip_filename, total_time)
+
+        except Exception as e:
+            print(f"Error in chapter download: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return Div(error_message(f"Error processing chapters: {str(e)}"))

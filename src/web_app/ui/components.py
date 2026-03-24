@@ -155,6 +155,10 @@ def operation_buttons(file_hash, file_type="pdf"):
     return Div(
         H3("Operations"),
         Div(
+            _op_btn("🤖", "OCR",
+                    hx_get=f"/extract-text-llm-form/{file_hash}",
+                    hx_target="#operation-result",
+                    extra_cls="purple"),
             _op_btn("📑", "TOC",
                     hx_post=f"/process/toc/{file_hash}",
                     hx_target="#operation-result"),
@@ -171,10 +175,10 @@ def operation_buttons(file_hash, file_type="pdf"):
                     hx_get=f"/extract-images-form/{file_hash}",
                     hx_target="#operation-result",
                     extra_cls="green"),
-            _op_btn("🤖", "OCR",
-                    hx_get=f"/extract-text-llm-form/{file_hash}",
+            _op_btn("📚", "Chapters",
+                    hx_get=f"/download-chapters-form/{file_hash}",
                     hx_target="#operation-result",
-                    extra_cls="purple"),
+                    extra_cls="orange"),
             cls="ops-grid",
         ),
         Div(id="operation-result"),
@@ -493,6 +497,119 @@ def toc_display(toc):
     return Div(
         H3("Table of Contents"),
         Ul(*items, cls="toc-list"),
+        cls="result-area",
+    )
+
+
+# ── Chapters ────────────────────────────────────────────────────────────────
+
+def chapters_form_display(chapters, file_hash):
+    """Show chapter list with checkboxes and download button, or warning if no TOC."""
+    if not chapters:
+        return Div(
+            H3("Download Chapters"),
+            P("This PDF has no table of contents. Chapter download requires a TOC.",
+              cls="warning"),
+            cls="result-area",
+        )
+
+    total_pages = sum(c["end_page"] - c["start_page"] + 1 for c in chapters)
+
+    rows = []
+    for ch in chapters:
+        pg_count = ch["end_page"] - ch["start_page"] + 1
+        rows.append(
+            Label(
+                Input(type="checkbox", name="chapters", value=str(ch["index"]),
+                      checked=True, cls="ch-cb",
+                      style="width:1.1rem;height:1.1rem;cursor:pointer;"),
+                Span(f'{ch["index"]}.', style="font-weight:600;min-width:1.5rem;"),
+                Span(ch["title"], style="flex:1;"),
+                Span(f'pp. {ch["start_page"]}–{ch["end_page"]}  ({pg_count} pg)',
+                     cls="toc-page"),
+                style="display:flex;gap:.5rem;align-items:center;padding:.35rem 0;cursor:pointer;",
+            )
+        )
+
+    toggle_js = (
+        "let cbs=this.closest('form').querySelectorAll('.ch-cb');"
+        "let allChecked=[...cbs].every(c=>c.checked);"
+        "cbs.forEach(c=>c.checked=!allChecked);"
+        "this.textContent=allChecked?'Select All':'Deselect All';"
+    )
+
+    return Div(
+        H3("Download Chapters"),
+        Div(
+            Span(f"{len(chapters)} chapters", cls="pill"),
+            Span(f"{total_pages} pages total", cls="pill"),
+            Span("OCR · one .md per chapter · ZIP", cls="pill"),
+            cls="file-meta", style="margin-bottom:.75rem;",
+        ),
+        Form(
+            Div(
+                Button("Deselect All", type="button",
+                       onclick=toggle_js,
+                       cls="button",
+                       style="font-size:.78rem;padding:.3rem .7rem;"),
+                style="margin-bottom:.5rem;",
+            ),
+            Div(*rows, style="display:flex;flex-direction:column;gap:0;"),
+            Div(
+                Button("Download Selected Chapters (OCR)", type="submit",
+                       style="background:var(--orange);margin-top:.75rem;"),
+                Span(Span(cls="spinner"), " Running OCR on selected chapters…",
+                     id="chapters-indicator", cls="htmx-indicator"),
+                cls="action-row",
+            ),
+            hx_post=f"/process/download-chapters/{file_hash}",
+            hx_target="#operation-result",
+            hx_indicator="#chapters-indicator",
+        ),
+        cls="result-area",
+    )
+
+
+def chapters_result_display(chapter_results, zip_filename, total_time):
+    """Show results after chapter OCR + ZIP creation."""
+    total_chapters = len(chapter_results)
+    ok_chapters = sum(1 for r in chapter_results if r.get("ok"))
+    total_pages = sum(r.get("pages", 0) for r in chapter_results)
+    total_input = sum(r.get("input_tokens", 0) for r in chapter_results)
+    total_output = sum(r.get("output_tokens", 0) for r in chapter_results)
+    total_cached = sum(r.get("cached_count", 0) for r in chapter_results)
+    cache_pct = (total_cached / total_pages * 100) if total_pages else 0
+
+    items = []
+    for r in chapter_results:
+        status = "✅" if r.get("ok") else "❌"
+        items.append(
+            Li(f'{status} {r["title"]}  —  {r.get("pages", 0)} pg',
+               style="font-size:.85rem;")
+        )
+
+    return Div(
+        H3("Chapters — OCR Complete"),
+        Div(
+            Span(f"{ok_chapters}/{total_chapters} chapters", cls="pill"),
+            Span(f"{total_pages} pages", cls="pill"),
+            Span(f"{total_time:.1f}s", cls="pill"),
+            Span(f"cache {cache_pct:.0f}%", cls="pill"),
+            cls="file-meta", style="margin-bottom:.75rem;",
+        ),
+        Div(
+            Span(f"Tokens — in: {total_input:,}  out: {total_output:,}",
+                 style="font-size:.82rem;color:var(--text-muted);"),
+        ),
+        Ul(*items, style="margin:.75rem 0;"),
+        Div(
+            A("⬇ Download ZIP",
+              href=f"/{zip_filename}",
+              download=zip_filename,
+              cls="button",
+              style="background:var(--orange);"),
+            cls="action-row",
+        ),
         cls="result-area",
     )
 
