@@ -31,24 +31,24 @@ TOKEN_COUNTING_MODEL = "gpt-4o"
 # Image extraction settings
 IMAGE_COMPRESSION_QUALITY = 85  # JPEG compression quality (1-100)
 MIN_IMAGE_SIZE = 25  # Minimum width/height in pixels
-MAX_IMAGES_PER_PAGE = 12  # Maximum images to extract per page
+MAX_IMAGES_PER_PAGE = 25  # Maximum images to extract per page
 IMAGE_PREVIEW_SIZE = 300  # Thumbnail display size in pixels
 
 # OCR with LLM settings
-OCR_MODEL = "gemini-2.5-flash-lite"  # Direct GenAI model
+OCR_MODEL = "gemini-3.1-flash-lite-preview"  # Direct GenAI model
 OCR_TEMPERATURE = 0.1
 OCR_TIMEOUT = 60
 OCR_MAX_TOKENS = 4096
 # OCR processes one page at a time for simplicity and reliability
 
 # Async OCR settings
-OCR_CONCURRENT_REQUESTS = 20  # Max concurrent LLM requests
+OCR_CONCURRENT_REQUESTS = 50  # Max concurrent LLM requests
 OCR_MAX_RETRIES = 3  # Max retry attempts per page
 OCR_RETRY_DELAY_BASE = 1.0  # Base delay for exponential backoff (seconds)
 OCR_BATCH_TIMEOUT = 300  # Overall timeout for batch processing (seconds)
 
 # OCR Caching settings
-OCR_CACHE_RETENTION_DAYS = 14  # Keep cached OCR results for 2 weeks
+OCR_CACHE_RETENTION_DAYS = 60  # Keep cached OCR results for 2 months
 OCR_CACHE_DB_PATH = Path("data/ocr_cache.db")  # SQLite DB for caching
 
 # URL-to-Markdown settings
