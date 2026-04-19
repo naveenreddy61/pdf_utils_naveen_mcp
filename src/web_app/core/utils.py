@@ -13,12 +13,20 @@ def calculate_file_hash(file_content: bytes) -> str:
     return hashlib.sha256(file_content).hexdigest()
 
 
+MAX_SANITIZED_STEM_LEN = 150
+
+
 def sanitize_filename(filename: str) -> str:
-    """Sanitize filename for safe storage."""
-    # Keep only alphanumeric, dots, hyphens, and underscores
+    """Sanitize filename for safe storage.
+
+    Also truncates the stem so the result (plus any hash prefix callers add)
+    stays under the ext4 255-byte filename limit.
+    """
     name = Path(filename).stem
     ext = Path(filename).suffix
     safe_name = re.sub(r'[^\w\-_]', '_', name)
+    if len(safe_name) > MAX_SANITIZED_STEM_LEN:
+        safe_name = safe_name[:MAX_SANITIZED_STEM_LEN]
     return f"{safe_name}{ext}"
 
 
