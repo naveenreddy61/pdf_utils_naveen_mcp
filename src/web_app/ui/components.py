@@ -714,6 +714,26 @@ def ocr_result_display(results, file_hash, start_page, end_page, text_filename):
     in_tok        = results.get("total_input_tokens", 0)
     out_tok       = results.get("total_output_tokens", 0)
 
+    backend   = results.get("backend", "gemini")
+    model_id  = results.get("model_id", "")
+    gpu       = results.get("gpu", "")
+    if backend == "modal":
+        badge_text  = f"⚡ Modal · {model_id}" + (f" · {gpu}" if gpu else "")
+        badge_color = "#7c3aed"
+    else:
+        badge_text  = f"☁ Gemini · {model_id}" if model_id else "☁ Gemini"
+        badge_color = "#0369a1"
+    backend_badge = Div(
+        Span(badge_text,
+             style=(
+                 f"font-size:0.8rem;font-weight:600;color:{badge_color};"
+                 f"background:color-mix(in srgb,{badge_color} 12%,transparent);"
+                 f"border:1px solid {badge_color};border-radius:999px;"
+                 f"padding:0.15rem 0.6rem;"
+             )),
+        style="margin-bottom:0.75rem;",
+    )
+
     # ── metrics boxes ──────────────────────────────────────────────────────
     metrics = Div(
         Div(
@@ -776,6 +796,8 @@ def ocr_result_display(results, file_hash, start_page, end_page, text_filename):
     return Div(
         P(results.get("summary", "OCR complete"),
           cls="alert-success"),
+
+        backend_badge,
 
         metrics,
 

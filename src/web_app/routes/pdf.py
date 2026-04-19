@@ -8,7 +8,10 @@ import re
 import time
 from fasthtml.common import *
 from starlette.responses import StreamingResponse
-from pdf_utils.config import UPLOAD_DIR, MIN_DPI, MAX_DPI, DEFAULT_DPI
+from pdf_utils.config import (
+    UPLOAD_DIR, MIN_DPI, MAX_DPI, DEFAULT_DPI,
+    OCR_MODEL, OCR_MODAL_MODEL_ID, OCR_MODAL_GPU,
+)
 from web_app.core.database import get_file_info
 from web_app.core.utils import count_tokens
 from web_app.services import pdf_service
@@ -17,6 +20,7 @@ from web_app.ui.components import (
     chapters_form_display, chapters_result_display,
 )
 from web_app.services import ocr_service
+from web_app.services import modal_ocr_service
 
 
 def setup_routes(app, rt):
@@ -555,6 +559,25 @@ def setup_routes(app, rt):
                     cls="form-row",
                 ),
                 Div(
+                    Label("OCR Backend",
+                          style="font-weight:600;margin-bottom:0.35rem;display:block;"),
+                    Div(
+                        Label(
+                            Input(type="radio", name="backend", value="gemini",
+                                  checked=True, style="margin-right:0.35rem;"),
+                            f"☁ Gemini ({OCR_MODEL})",
+                            style="display:block;cursor:pointer;margin-bottom:0.25rem;",
+                        ),
+                        Label(
+                            Input(type="radio", name="backend", value="modal",
+                                  style="margin-right:0.35rem;"),
+                            f"⚡ Modal ({OCR_MODAL_MODEL_ID} · {OCR_MODAL_GPU})",
+                            style="display:block;cursor:pointer;",
+                        ),
+                    ),
+                    style="margin-bottom:0.75rem;",
+                ),
+                Div(
                     Button("Extract with OCR", type="submit",
                            style="background:var(--purple);"),
                     Span(Span(cls="spinner"), " Running OCR…",
@@ -570,57 +593,73 @@ def setup_routes(app, rt):
     
     
     @rt('/process/extract-text-llm/{file_hash}')
-    async def process_extract_text_llm(file_hash: str, start_page: int, end_page: int):
+    async def process_extract_text_llm(
+        file_hash: str, start_page: int, end_page: int,
+        backend: str = "gemini",
+    ):
         """Extract text using async LLM OCR with caching and batch processing."""
         try:
             file_info = get_file_info(file_hash)
             if not file_info:
                 return Div(error_message("File not found."))
-            
+
             file_path = UPLOAD_DIR / file_info.stored_filename
-            
+
             # Validate page range
             if start_page < 1 or end_page > file_info.page_count or start_page > end_page:
                 return Div(error_message("Invalid page range."))
-            
+
             # Store progress messages
             progress_messages = []
-            
+
             def progress_callback(message: str):
                 progress_messages.append(message)
                 print(f"OCR Progress: {message}")
-            
-            # Process pages with async OCR
-            print(f"Starting async LLM OCR extraction for pages {start_page} to {end_page} from: {file_path}")
-            results = await ocr_service.process_pages_async_batch(
-                file_path, 
-                start_page, 
-                end_page,
-                progress_callback=progress_callback
+
+            # Dispatch to the chosen backend. Both services expose the same
+            # process_document_async signature and return dict.
+            service = modal_ocr_service if backend == "modal" else ocr_service
+            active_model = OCR_MODAL_MODEL_ID if backend == "modal" else OCR_MODEL
+
+            print(
+                f"Starting LLM OCR ({backend}/{active_model}) for pages "
+                f"{start_page}–{end_page} from: {file_path}"
             )
-            
-            # Add progress messages to results for display
+            results = await service.process_document_async(
+                file_path,
+                start_page,
+                end_page,
+                progress_callback=progress_callback,
+            )
+
+            # Annotate results so the UI can show which backend/model ran.
             results["progress_messages"] = progress_messages
-            
+            results["backend"] = backend
+            results["model_id"] = active_model
+            if backend == "modal":
+                results["gpu"] = OCR_MODAL_GPU
+
             # Save text to file for download
-            # Calculate cache hit rate for filename
             pages_processed = results.get('pages_processed', 0)
             cached_pages_count = len(results.get('cached_pages', []))
             cache_hit_rate = (cached_pages_count / pages_processed) * 100 if pages_processed > 0 else 0
             cache_info = f"_cache{cache_hit_rate:.0f}pct" if cache_hit_rate > 0 else ""
-            text_filename = f"mcp_{file_info.stored_filename.replace('.pdf', '')}_async_ocr_p{start_page}-{end_page}{cache_info}.txt"
+            backend_tag = "_modal" if backend == "modal" else ""
+            text_filename = (
+                f"mcp_{file_info.stored_filename.replace('.pdf', '')}"
+                f"_async_ocr{backend_tag}_p{start_page}-{end_page}{cache_info}.txt"
+            )
             text_path = UPLOAD_DIR / text_filename
             text_path.write_text(results["full_text"], encoding='utf-8')
-            
-            # Return the formatted result display
+
             return ocr_result_display(
                 results=results,
                 file_hash=file_hash,
                 start_page=start_page,
                 end_page=end_page,
-                text_filename=text_filename
+                text_filename=text_filename,
             )
-            
+
         except Exception as e:
             print(f"Error in async LLM OCR extraction: {str(e)}")
             import traceback

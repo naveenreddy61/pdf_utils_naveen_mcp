@@ -285,6 +285,36 @@ input_tokens = usage.prompt_token_count if usage else 0
 output_tokens = usage.candidates_token_count if usage else 0
 ```
 
+## Modal OCR Backend (Alternative)
+
+An open-weights OCR model (DeepSeek-OCR-2 by default) running on Modal serverless GPUs, selectable per-request via a UI radio on the OCR form.
+
+### Components
+- `modal_app/ocr_app.py` — Modal app. One `@app.cls` with `@modal.enter()` model load and `@modal.fastapi_endpoint(method="POST")` accepting `{"image_base64": "..."}`.
+- `modal_app/adapters.py` — `OCRAdapter` protocol + registry. Add a new model by writing a small class with `MODEL_ID`, `load()`, `extract(pil_image)` and registering it in `ADAPTERS`. Remember to extend the image deps in `ocr_app.py`.
+- `src/web_app/services/modal_ocr_service.py` — Client service mirroring `ocr_service.process_document_async` exactly. Renders each page via PyMuPDF → PNG → HTTP POST to Modal. Uses a **model-aware** cache key (`modal:{model_id}:…`) so Gemini and Modal results never collide.
+- Config lives in `src/pdf_utils/config.py` (`OCR_MODAL_*`). All env-backed, set per-deploy.
+
+### Robustness features
+- **HF weights volume** (`pdf-ocr-hf-cache`) mounted at `/root/.cache/huggingface` → weights persist across cold starts (no re-download after the first run).
+- **Same cache DB, separate key space** — reuses `ocr_cache.py` (`data/ocr_cache.db`); the key includes the model ID so multiple backends coexist.
+- **Same retry + PyMuPDF fallback** as the Gemini service (`OCR_MAX_RETRIES`, `OCR_RETRY_DELAY_BASE`, `extract_with_pymupdf_fallback`).
+- **`scaledown_window=300`** keeps the container warm for 5 min between requests.
+
+### Deploy flow
+```bash
+uv run modal setup                            # first time: authenticate
+# (optional) pick a different model/GPU
+export OCR_MODAL_MODEL_ID=deepseek-ai/DeepSeek-OCR-2
+export OCR_MODAL_GPU=L40S                     # L40S | A100 | H100 | B200 …
+uv run modal deploy modal_app/ocr_app.py      # prints the endpoint URL
+# copy the URL into .env as OCR_MODAL_ENDPOINT, then restart the web app
+```
+
+### Switching models / GPUs
+- Edit `OCR_MODAL_MODEL_ID` and/or `OCR_MODAL_GPU` (env var or config.py), redeploy. The UI radio label auto-updates to reflect what's live.
+- Per-request GPU switching from the UI is deliberately **not** supported — single deploy = single (model, gpu) combination.
+
 ## Async Development Patterns
 
 ### CPU-Bound Operations (Token Counting, Heavy Processing)

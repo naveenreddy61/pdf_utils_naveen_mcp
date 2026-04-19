@@ -68,3 +68,20 @@ GCS_BUCKET_NAME: str = _os.getenv("GCS_BUCKET_NAME", "")
 GCS_CREDENTIALS_FILE: str | None = _os.getenv("GCS_CREDENTIALS_FILE") or None
 GCS_SIGNED_URL_EXPIRY_MINUTES: int = int(_os.getenv("GCS_SIGNED_URL_EXPIRY_MINUTES", "15"))
 GCS_DELETE_AFTER_DOWNLOAD: bool = _os.getenv("GCS_DELETE_AFTER_DOWNLOAD", "true").lower() == "true"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Modal OCR backend (serverless GPU)
+# ─────────────────────────────────────────────────────────────────────────────
+# Deploy-time config for the Modal-hosted OCR endpoint. Swapping model or GPU
+# means changing these values and re-running `modal deploy modal_app/ocr_app.py`.
+# The web app picks between Gemini and Modal via a UI radio per request.
+
+OCR_MODAL_APP_NAME: str = _os.getenv("OCR_MODAL_APP_NAME", "pdf-ocr-modal")
+OCR_MODAL_MODEL_ID: str = _os.getenv("OCR_MODAL_MODEL_ID", "deepseek-ai/DeepSeek-OCR-2")
+OCR_MODAL_GPU: str = _os.getenv("OCR_MODAL_GPU", "L40S")
+OCR_MODAL_ENDPOINT: str = _os.getenv("OCR_MODAL_ENDPOINT", "")
+OCR_MODAL_TOKEN_ID: str = _os.getenv("OCR_MODAL_TOKEN_ID", "")
+OCR_MODAL_TOKEN_SECRET: str = _os.getenv("OCR_MODAL_TOKEN_SECRET", "")
+OCR_MODAL_DPI: int = int(_os.getenv("OCR_MODAL_DPI", "150"))
+OCR_MODAL_TIMEOUT: int = int(_os.getenv("OCR_MODAL_TIMEOUT", "180"))
+OCR_MODAL_CONCURRENT_REQUESTS: int = int(_os.getenv("OCR_MODAL_CONCURRENT_REQUESTS", "5"))
