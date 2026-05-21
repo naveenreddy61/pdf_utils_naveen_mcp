@@ -36,10 +36,8 @@ def setup_routes(app, rt):
             ),
         )
 
-    @rt('/login', methods=['POST'])
-    async def post(req, sess):
-        form = await req.form()
-        password = form.get('password', '')
+    @rt('/login')
+    def post(password: str, sess):
         if password == LOGIN_PASSWORD:
             sess['authenticated'] = True
             return RedirectResponse('/', status_code=303)
@@ -47,6 +45,6 @@ def setup_routes(app, rt):
         return RedirectResponse('/login', status_code=303)
 
     @rt('/logout')
-    def get(sess):
+    def logout(sess):
         sess.clear()
         return RedirectResponse('/login', status_code=303)
