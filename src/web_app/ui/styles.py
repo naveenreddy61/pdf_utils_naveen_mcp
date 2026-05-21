@@ -503,4 +503,40 @@ h4 { font-size: 0.8rem; font-weight: 600; margin-bottom: 0.5rem; color: var(--te
   margin-top: 0.75rem;
 }
 .image-thumb { width: 100%; height: auto; border: 1px solid var(--border); border-radius: var(--radius); display: block; }
+
+/* ── Login page ────────────────────────────────────────────── */
+.login-page {
+  min-height: 100vh; display: flex; align-items: center; justify-content: center;
+  background: var(--bg); padding: 1rem;
+}
+.login-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); padding: 2.5rem 2rem;
+  width: 100%; max-width: 360px;
+  box-shadow: var(--shadow);
+}
+.login-title { font-size: 1.4rem; font-weight: 700; color: var(--text); margin-bottom: 0.35rem; }
+.login-sub { font-size: 0.875rem; color: var(--text-muted); margin-bottom: 1.5rem; }
+.login-form { display: flex; flex-direction: column; gap: 0.75rem; }
+.login-field { display: flex; flex-direction: column; }
+.login-input {
+  width: 100%; padding: 0.6rem 0.85rem; border: 1px solid var(--border);
+  border-radius: var(--radius); font-size: 0.95rem; outline: none;
+  transition: border-color 0.15s;
+}
+.login-input:focus { border-color: var(--primary); }
+.login-btn {
+  padding: 0.6rem 1rem; background: var(--primary); color: #fff;
+  border: none; border-radius: var(--radius); font-size: 0.95rem;
+  font-weight: 500; cursor: pointer; transition: background 0.15s;
+}
+.login-btn:hover { background: var(--primary-hover); }
+.login-error { font-size: 0.82rem; color: var(--red); margin: 0; }
+
+/* ── Logout link ───────────────────────────────────────────── */
+.logout-link {
+  font-size: 0.78rem; color: var(--text-muted); text-decoration: none;
+  float: right; margin-top: 0.25rem;
+}
+.logout-link:hover { color: var(--text); }
 """

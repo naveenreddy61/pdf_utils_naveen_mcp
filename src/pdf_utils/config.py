@@ -62,8 +62,12 @@ URL_PDF_QUALITY_CHECK_ENABLED = True # Run LLM quality check before full OCR
 # Optional: path to a Chromium/Chrome binary; leave empty to use playwright default
 URL_PDF_CHROMIUM_EXECUTABLE = ""
 
-# GCS settings for large file upload bypass
+# Auth settings
 import os as _os
+LOGIN_PASSWORD: str = _os.getenv("LOGIN_PASSWORD", "")
+SESSION_SECRET_KEY: str = _os.getenv("SESSION_SECRET_KEY", "pdf-app-dev-secret-change-me")
+
+# GCS settings for large file upload bypass
 GCS_BUCKET_NAME: str = _os.getenv("GCS_BUCKET_NAME", "")
 GCS_CREDENTIALS_FILE: str | None = _os.getenv("GCS_CREDENTIALS_FILE") or None
 GCS_SIGNED_URL_EXPIRY_MINUTES: int = int(_os.getenv("GCS_SIGNED_URL_EXPIRY_MINUTES", "15"))

@@ -3,7 +3,8 @@
 import asyncio
 import uvicorn
 from fasthtml.common import *
-from pdf_utils.config import UPLOAD_DIR, SERVER_PORT
+from starlette.responses import RedirectResponse
+from pdf_utils.config import UPLOAD_DIR, SERVER_PORT, LOGIN_PASSWORD, SESSION_SECRET_KEY
 from web_app.ui.styles import CSS_STYLES
 from web_app.services.cleanup import daily_cleanup
 
@@ -12,15 +13,26 @@ from web_app.routes import main as main_routes
 from web_app.routes import pdf as pdf_routes
 from web_app.routes import api as api_routes
 from web_app.routes import url as url_routes
+from web_app.routes import auth as auth_routes
+
+
+def _auth_check(req, sess):
+    """Redirect unauthenticated requests to /login. No-op if LOGIN_PASSWORD is unset."""
+    if not LOGIN_PASSWORD:
+        return
+    if req.url.path in ('/login', '/logout'):
+        return
+    if not sess.get('authenticated'):
+        return RedirectResponse('/login', status_code=303)
 
 
 def create_app():
     """Create and configure the FastHTML application."""
-    # Create upload directory if it doesn't exist
     UPLOAD_DIR.mkdir(exist_ok=True)
-    
-    # Initialize FastHTML app
+
     app, rt = fast_app(
+        secret_key=SESSION_SECRET_KEY,
+        before=Beforeware(_auth_check, skip=[r'/login', r'/logout']),
         static_path='uploads',
         hdrs=(
             Link(rel='stylesheet', href='https://cdn.jsdelivr.net/npm/normalize.css@8.0.1/normalize.min.css'),
@@ -28,8 +40,8 @@ def create_app():
             Style(CSS_STYLES)
         )
     )
-    
-    # Setup routes
+
+    auth_routes.setup_routes(app, rt)
     main_routes.setup_routes(app, rt)
     pdf_routes.setup_routes(app, rt)
     api_routes.setup_routes(app, rt)

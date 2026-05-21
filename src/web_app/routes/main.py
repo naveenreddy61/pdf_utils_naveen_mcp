@@ -163,8 +163,10 @@ def setup_routes(app, rt):
 
     @rt('/')
     def index():
+        from pdf_utils.config import LOGIN_PASSWORD
         return Titled("PDF & Image Utilities",
             Div(
+                A("Logout", href="/logout", cls="logout-link") if LOGIN_PASSWORD else None,
                 P(
                     f"PDF · PPT · Images · URL to Markdown  ·  max {MAX_FILE_SIZE_MB} MB  ·  files kept 30 days",
                     cls="page-subtitle",
