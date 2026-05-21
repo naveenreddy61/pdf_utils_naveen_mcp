@@ -27,7 +27,7 @@ def setup_routes(app, rt):
                         ),
                         P(error, cls="login-error") if error else None,
                         Button("Sign in", type="submit", cls="login-btn"),
-                        method="post", action="/login",
+                        method="post", action="/auth",
                         cls="login-form",
                     ),
                     cls="login-card",
@@ -36,8 +36,9 @@ def setup_routes(app, rt):
             ),
         )
 
-    @rt('/login')
+    @rt('/auth')
     def post(password: str, sess):
+        print(f"[AUTH] /auth called, match={password == LOGIN_PASSWORD}", flush=True)
         if password == LOGIN_PASSWORD:
             sess['authenticated'] = True
             return RedirectResponse('/', status_code=303)

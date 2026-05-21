@@ -20,7 +20,7 @@ def _auth_check(req, sess):
     """Redirect unauthenticated requests to /login. No-op if LOGIN_PASSWORD is unset."""
     if not LOGIN_PASSWORD:
         return
-    if req.url.path in ('/login', '/logout'):
+    if req.url.path in ('/login', '/auth', '/logout'):
         return
     if not sess.get('authenticated'):
         return RedirectResponse('/login', status_code=303)
