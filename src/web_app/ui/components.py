@@ -344,7 +344,7 @@ def url_result_display(result, md_filename: str, file_content: str):
         Div(
             A(
                 "⬇ Download .md",
-                href=f"/{md_filename}",
+                href=f"/download/url-md/{md_filename}",
                 download=md_filename,
                 cls="button",
                 style="background:var(--green);",
@@ -352,10 +352,10 @@ def url_result_display(result, md_filename: str, file_content: str):
             Button(
                 "📋 Copy",
                 onclick=(
-                    f"const t=document.getElementById('{preview_id}').textContent;"
+                    f"fetch('/download/url-md/{md_filename}').then(r=>r.text()).then(t=>{{"
                     f"navigator.clipboard.writeText(t).then(()=>{{"
                     f"this.textContent='✅ Copied!';this.style.background='var(--green)';"
-                    f"setTimeout(()=>{{this.textContent='📋 Copy';this.style.background='';}},2000);}});"
+                    f"setTimeout(()=>{{this.textContent='📋 Copy';this.style.background='';}},2000);}});}});"
                 ),
                 cls="button",
             ),

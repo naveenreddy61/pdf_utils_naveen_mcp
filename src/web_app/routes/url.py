@@ -2,6 +2,7 @@
 
 import uuid
 from starlette.requests import Request
+from starlette.responses import FileResponse, Response
 from fasthtml.common import *
 from pdf_utils.config import UPLOAD_DIR
 from web_app.services.url_service import extract_url_to_markdown
@@ -66,3 +67,10 @@ def setup_routes(app, rt):
         txt_path.write_text(file_content, encoding="utf-8")
 
         return url_pdf_ocr_result_display(result, txt_filename, file_content)
+
+    @rt('/download/url-md/{filename}')
+    async def download_url_md(filename: str):
+        file_path = UPLOAD_DIR / filename
+        if not file_path.exists():
+            return Response("File not found", status_code=404)
+        return FileResponse(str(file_path), filename=filename, media_type='text/markdown')
