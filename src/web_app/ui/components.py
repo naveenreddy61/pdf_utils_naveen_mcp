@@ -24,7 +24,7 @@ def upload_form():
                     Input(
                         type="file",
                         name="file",
-                        accept=".pdf,.jpg,.jpeg,.png,.webp,.ppt,.pptx",
+                        accept=".pdf,.epub,.jpg,.jpeg,.png,.webp,.ppt,.pptx",
                         style="display:none",
                         hx_post="/upload",
                         hx_encoding="multipart/form-data",
@@ -35,7 +35,7 @@ def upload_form():
                     ),
                     cls="file-label-btn",
                 ),
-                P(f"PDF · PPT · JPG · PNG · WEBP  ·  max {MAX_FILE_SIZE_MB} MB",
+                P(f"PDF · EPUB · PPT · JPG · PNG · WEBP  ·  max {MAX_FILE_SIZE_MB} MB",
                   cls="upload-hint"),
                 cls="upload-zone",
             ),
@@ -111,17 +111,23 @@ def page_with_result(result_content):
 
 def file_info_display(file_info, is_existing=False):
     """Compact pill-based file info card."""
-    is_pdf = file_info.file_type == "pdf"
-    icon   = "📄" if is_pdf else "🖼"
-    label  = "PDF" if is_pdf else "Image"
-    size   = f"{file_info.file_size / 1024 / 1024:.1f} MB"
+    ft = file_info.file_type
+    if ft == "pdf":
+        icon, label = "📄", "PDF"
+    elif ft == "epub":
+        icon, label = "📖", "EPUB"
+    else:
+        icon, label = "🖼", "Image"
+    size = f"{file_info.file_size / 1024 / 1024:.1f} MB"
 
     pills = [
         Span(f"{icon} {label}", cls="pill"),
         Span(size, cls="pill"),
     ]
-    if is_pdf:
+    if ft == "pdf":
         pills.append(Span(f"{file_info.page_count} pages", cls="pill"))
+    elif ft == "epub":
+        pills.append(Span(f"{file_info.page_count} chapters", cls="pill"))
 
     status_msg = "Uploaded" if not is_existing else "Already cached – instant load"
     status_cls = "alert-success" if not is_existing else "alert-warning"
@@ -147,6 +153,32 @@ def operation_buttons(file_hash, file_type="pdf"):
                         hx_get=f"/extract-text-llm-image/{file_hash}",
                         hx_target="#operation-result",
                         extra_cls="purple"),
+                cls="ops-grid",
+            ),
+            Div(id="operation-result"),
+        )
+
+    if file_type == "epub":
+        return Div(
+            H3("Operations"),
+            Div(
+                _op_btn("ℹ️", "Metadata",
+                        hx_get=f"/epub-metadata/{file_hash}",
+                        hx_target="#operation-result"),
+                _op_btn("📑", "TOC",
+                        hx_post=f"/process/epub-toc/{file_hash}",
+                        hx_target="#operation-result"),
+                _op_btn("📝", "Text",
+                        hx_get=f"/epub-text-form/{file_hash}",
+                        hx_target="#operation-result"),
+                _op_btn("🎨", "Images",
+                        hx_get=f"/epub-images-form/{file_hash}",
+                        hx_target="#operation-result",
+                        extra_cls="green"),
+                _op_btn("📚", "Chapters",
+                        hx_get=f"/epub-chapters-form/{file_hash}",
+                        hx_target="#operation-result",
+                        extra_cls="orange"),
                 cls="ops-grid",
             ),
             Div(id="operation-result"),
@@ -825,5 +857,57 @@ def ocr_result_display(results, file_hash, start_page, end_page, text_filename):
             id=preview_id,
             cls="text-preview"),
 
+        cls="result-area",
+    )
+
+
+# ── EPUB image gallery ────────────────────────────────────────────────────────
+
+def epub_image_gallery(images_data: dict, file_hash: str):
+    """Gallery of images extracted from an EPUB (no page grouping)."""
+    if not images_data:
+        return Div(
+            H3("No Images Found"),
+            P("No embedded images found in this EPUB.", cls="warning"),
+            cls="result-area",
+        )
+
+    all_images = [img for group in images_data.values() for img in group]
+    total = len(all_images)
+
+    image_items = [
+        Div(
+            A(
+                Img(src=img["data"], alt=img["filename"], cls="image-thumbnail"),
+                href=img["data"],
+                download=img["filename"],
+                title=f"Download {img['filename']}",
+            ),
+            cls="image-item",
+        )
+        for img in all_images
+    ]
+
+    return Div(
+        H3("Extracted Images"),
+        Div(
+            Span(f"{total} image{'s' if total != 1 else ''}", cls="pill"),
+            cls="file-meta", style="margin-bottom:0.75rem;",
+        ),
+        P("Click any image to download it",
+          style="font-size:0.8rem;color:var(--text-muted);margin-bottom:0.5rem;"),
+        Div(
+            Button(
+                "⬇ Download All as ZIP",
+                onclick=(
+                    f"this.textContent='Preparing…';this.disabled=true;"
+                    f"window.location.href='/epub-download-image-zip/{file_hash}';"
+                    f"setTimeout(()=>{{this.textContent='⬇ Download All as ZIP';this.disabled=false;}},2000);"
+                ),
+                cls="button",
+            ),
+            cls="action-row",
+        ),
+        Div(*image_items, cls="image-extraction-grid"),
         cls="result-area",
     )

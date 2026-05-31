@@ -16,6 +16,7 @@ from web_app.core.database import (
 )
 from web_app.core.utils import calculate_file_hash, sanitize_filename
 from web_app.services.pdf_service import get_page_count
+from web_app.services.epub_service import get_epub_chapter_count
 from web_app.services.pptx_service import convert_pptx_to_pdf_bytes
 from web_app.ui.components import (
     upload_form, file_info_display, operation_buttons,
@@ -31,11 +32,12 @@ _CONTENT_TYPE_MAP = {
     "image/webp":      "image",
 }
 _EXT_MAP = {
-    ".pdf":  ("application/pdf", "pdf"),
-    ".jpg":  ("image/jpeg",      "image"),
-    ".jpeg": ("image/jpeg",      "image"),
-    ".png":  ("image/png",       "image"),
-    ".webp": ("image/webp",      "image"),
+    ".pdf":  ("application/pdf",            "pdf"),
+    ".epub": ("application/epub+zip",       "epub"),
+    ".jpg":  ("image/jpeg",                 "image"),
+    ".jpeg": ("image/jpeg",                 "image"),
+    ".png":  ("image/png",                  "image"),
+    ".webp": ("image/webp",                 "image"),
     ".ppt":  ("application/vnd.ms-powerpoint", "pptx"),
     ".pptx": ("application/vnd.openxmlformats-officedocument.presentationml.presentation", "pptx"),
 }
@@ -74,9 +76,12 @@ async def _register_local_file(content: bytes, original_filename: str, file_type
 
     await asyncio.to_thread(file_path.write_bytes, content)
 
-    page_count = (
-        await asyncio.to_thread(get_page_count, file_path) if file_type == "pdf" else 1
-    )
+    if file_type == "pdf":
+        page_count = await asyncio.to_thread(get_page_count, file_path)
+    elif file_type == "epub":
+        page_count = await asyncio.to_thread(get_epub_chapter_count, file_path)
+    else:
+        page_count = 1
     file_info = FileRecord(
         file_hash=file_hash,
         original_filename=original_filename,
@@ -133,9 +138,12 @@ async def _run_upload_task(
         _tasks[task_id] = {"phase": "Reading document info…", "pct": 85}
         await asyncio.sleep(0)
 
-        page_count = (
-            await asyncio.to_thread(get_page_count, file_path) if file_type == "pdf" else 1
-        )
+        if file_type == "pdf":
+            page_count = await asyncio.to_thread(get_page_count, file_path)
+        elif file_type == "epub":
+            page_count = await asyncio.to_thread(get_epub_chapter_count, file_path)
+        else:
+            page_count = 1
         file_info = FileRecord(
             file_hash=file_hash,
             original_filename=original_filename,
