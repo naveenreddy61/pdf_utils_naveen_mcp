@@ -22,7 +22,7 @@ from web_app.services.md_service import convert_md_to_pdf_bytes
 from web_app.ui.components import (
     upload_form, file_info_display, operation_buttons,
     error_message, upload_progress_poll, upload_progress_status,
-    url_input_form,
+    url_input_form, auto_download_script,
 )
 
 # Map MIME types / extensions to internal file_type labels
@@ -105,6 +105,7 @@ async def _run_upload_task(
     file_type: str,
 ) -> None:
     """Background coroutine: process upload and store result in _tasks."""
+    auto_download = file_type == "md"
     try:
         _tasks[task_id] = {"phase": "Hashing file…", "pct": 20}
         await asyncio.sleep(0)  # yield so the polling response goes out first
@@ -118,7 +119,8 @@ async def _run_upload_task(
         if existing:
             update_last_accessed(file_hash)
             _tasks[task_id] = {"phase": "done", "pct": 100,
-                                "result": (existing, True)}
+                                "result": (existing, True),
+                                "auto_download": auto_download}
             return
 
         # Convert PPTX/PPT → PDF before saving
@@ -167,7 +169,8 @@ async def _run_upload_task(
         insert_file_record(file_info)
 
         _tasks[task_id] = {"phase": "done", "pct": 100,
-                           "result": (file_info, False)}
+                           "result": (file_info, False),
+                           "auto_download": auto_download}
 
     except Exception as exc:
         import traceback; traceback.print_exc()
@@ -258,8 +261,14 @@ def setup_routes(app, rt):
 
         if task["phase"] == "done":
             file_info, is_existing = task["result"]
+            auto_download = task.get("auto_download", False)
             _tasks.pop(task_id, None)
-            return _build_file_result_fragment(file_info, is_existing)
+            fragment = _build_file_result_fragment(file_info, is_existing)
+            if auto_download:
+                return Div(fragment, auto_download_script(
+                    file_info.stored_filename, file_info.original_filename
+                ))
+            return fragment
 
         if task["phase"] == "error":
             err = task.get("error", "Unknown error")

@@ -73,6 +73,20 @@ def upload_progress_status(phase: str, pct: int):
     return _progress_bar(phase, pct)
 
 
+def auto_download_script(stored_filename: str, download_as: str):
+    """Forces an immediate browser download of a just-saved upload,
+    via a synthetic <a download> click (window.location.href would just
+    open PDFs in-browser instead of downloading them)."""
+    return Script(
+        "(function(){"
+        "var a=document.createElement('a');"
+        f"a.href='/{stored_filename}';"
+        f"a.download='{download_as}';"
+        "document.body.appendChild(a);a.click();a.remove();"
+        "})();"
+    )
+
+
 def _progress_bar(label: str, pct: int):
     return Div(
         Div(
