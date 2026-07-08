@@ -119,11 +119,32 @@ URL_PDF_QUALITY_CHECK_ENABLED = True # LLM quality assessment before full OCR
 URL_PDF_CHROMIUM_EXECUTABLE = ""     # leave empty to use playwright's own binary
 ```
 
+## Markdown-to-PDF Conversion (`md_service.py`)
+
+Uploading a `.md` file auto-converts it to PDF via **pandoc** with the **typst** PDF engine, then registers it as a normal `file_type="pdf"` — the full PDF toolset (TOC, text/image extraction, OCR) works on the result immediately. Mirrors the PPTX→PDF conversion pattern in `main.py`'s upload task.
+
+**System dependencies (not managed by `uv`):**
+- `pandoc` — install via `apt install pandoc` (already present on the VPS)
+- `typst` CLI — pandoc shells out to it for `--pdf-engine=typst`; **not** available via apt. Install the prebuilt binary:
+  ```bash
+  curl -fsSL -o /tmp/typst.tar.xz https://github.com/typst/typst/releases/latest/download/typst-x86_64-unknown-linux-musl.tar.xz
+  tar -xf /tmp/typst.tar.xz -C /tmp
+  install -m 755 /tmp/typst-x86_64-unknown-linux-musl/typst /usr/local/bin/typst
+  ```
+- System fonts — typst has no bundled default font, so `mainfont`/`monofont` must be passed explicitly (`PANDOC_MAIN_FONT` / `PANDOC_MONO_FONT` in `config.py`, default `Noto Sans` / `Noto Sans Mono`). Without a matching installed font, conversion fails with `error: font fallback list must not be empty`.
+
+**Verify:**
+```bash
+pandoc --version && typst --version
+echo '# test' | pandoc -o /tmp/t.pdf --pdf-engine=typst -V mainfont="Noto Sans"
+```
+
 ## Prerequisites
 
 - **Python 3.12+**: Required for the server.
 - **uv**: Recommended for environment and package management.
 - **Playwright Chromium**: Required for URL-to-PDF-OCR feature (see above).
+- **pandoc + typst**: Required for Markdown-to-PDF upload conversion (see above).
 
 ## Environment Configuration
 
