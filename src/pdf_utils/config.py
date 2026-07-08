@@ -15,10 +15,15 @@ DB_PATH = Path("data/pdf_files.db")
 SERVER_PORT = 8000
 
 # Allowed file extensions
-ALLOWED_EXTENSIONS = {'.pdf', '.epub', '.jpg', '.jpeg', '.png', '.webp', '.ppt', '.pptx'}
+ALLOWED_EXTENSIONS = {'.pdf', '.epub', '.jpg', '.jpeg', '.png', '.webp', '.ppt', '.pptx', '.md'}
 
 # LibreOffice conversion settings
 LIBREOFFICE_TIMEOUT = 60  # seconds to wait for soffice conversion
+
+# Pandoc (Markdown -> PDF via typst) conversion settings
+PANDOC_TIMEOUT = 60  # seconds to wait for pandoc conversion
+PANDOC_MAIN_FONT = "Noto Sans"
+PANDOC_MONO_FONT = "Noto Sans Mono"
 
 # Image conversion settings
 DEFAULT_DPI = 150

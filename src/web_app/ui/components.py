@@ -24,7 +24,7 @@ def upload_form():
                     Input(
                         type="file",
                         name="file",
-                        accept=".pdf,.epub,.jpg,.jpeg,.png,.webp,.ppt,.pptx",
+                        accept=".pdf,.epub,.jpg,.jpeg,.png,.webp,.ppt,.pptx,.md",
                         style="display:none",
                         hx_post="/upload",
                         hx_encoding="multipart/form-data",
@@ -35,7 +35,7 @@ def upload_form():
                     ),
                     cls="file-label-btn",
                 ),
-                P(f"PDF · EPUB · PPT · JPG · PNG · WEBP  ·  max {MAX_FILE_SIZE_MB} MB",
+                P(f"PDF · EPUB · PPT · MD · JPG · PNG · WEBP  ·  max {MAX_FILE_SIZE_MB} MB",
                   cls="upload-hint"),
                 cls="upload-zone",
             ),

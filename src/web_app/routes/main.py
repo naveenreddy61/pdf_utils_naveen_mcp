@@ -18,6 +18,7 @@ from web_app.core.utils import calculate_file_hash, sanitize_filename
 from web_app.services.pdf_service import get_page_count
 from web_app.services.epub_service import get_epub_chapter_count
 from web_app.services.pptx_service import convert_pptx_to_pdf_bytes
+from web_app.services.md_service import convert_md_to_pdf_bytes
 from web_app.ui.components import (
     upload_form, file_info_display, operation_buttons,
     error_message, upload_progress_poll, upload_progress_status,
@@ -40,6 +41,7 @@ _EXT_MAP = {
     ".webp": ("image/webp",                 "image"),
     ".ppt":  ("application/vnd.ms-powerpoint", "pptx"),
     ".pptx": ("application/vnd.openxmlformats-officedocument.presentationml.presentation", "pptx"),
+    ".md":   ("text/markdown",                 "md"),
 }
 
 # ── In-memory task store (per-process; fine for single-worker deployments) ───
@@ -127,6 +129,14 @@ async def _run_upload_task(
             original_filename = Path(original_filename).stem + ".pdf"
             file_type = "pdf"
 
+        # Convert Markdown → PDF before saving
+        if file_type == "md":
+            _tasks[task_id] = {"phase": "Converting to PDF…", "pct": 55}
+            await asyncio.sleep(0)
+            content = await convert_md_to_pdf_bytes(content, original_filename)
+            original_filename = Path(original_filename).stem + ".pdf"
+            file_type = "pdf"
+
         _tasks[task_id] = {"phase": "Saving file…", "pct": 70}
         await asyncio.sleep(0)
 
@@ -176,7 +186,7 @@ def setup_routes(app, rt):
             Div(
                 A("Logout", href="/logout", cls="logout-link") if LOGIN_PASSWORD else None,
                 P(
-                    f"PDF · PPT · Images · URL to Markdown  ·  max {MAX_FILE_SIZE_MB} MB  ·  files kept 30 days",
+                    f"PDF · PPT · MD · Images · URL to Markdown  ·  max {MAX_FILE_SIZE_MB} MB  ·  files kept 30 days",
                     cls="page-subtitle",
                 ),
                 upload_form(),
@@ -202,7 +212,7 @@ def setup_routes(app, rt):
             type_info = _file_type_from_name(filename_lower)
             if not type_info:
                 return error_message(
-                    "Unsupported file type. Allowed: PDF, JPG, JPEG, PNG, WEBP, PPT, PPTX."
+                    "Unsupported file type. Allowed: PDF, EPUB, JPG, JPEG, PNG, WEBP, PPT, PPTX, MD."
                 )
             _, file_type = type_info
 
