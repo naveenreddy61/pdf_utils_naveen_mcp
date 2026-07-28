@@ -35,7 +35,8 @@ STRUCTURE
 - Reproduce a box, circle, or underline around text as normal text; do not describe it.
 - Reproduce struck-through text as ~~text~~.
 - Render text that is clearly a heading (underlined, boxed, or noticeably larger) as a
-  markdown heading.
+  markdown heading with `#`. Never use an HTML tag such as `<u>` for this — output markdown
+  only, never HTML, anywhere.
 - Transcribe genuine mathematical expressions as LaTeX: $inline$ or $$display$$. Ordinary
   prose punctuation is NOT maths — write an arrow as `->`, a bullet as `-`, and an ampersand
   as `&`. Never emit `$\rightarrow$` or similar for a hand-drawn arrow in a sentence.
@@ -61,5 +62,9 @@ UNCERTAINTY — this matters more than completeness.
 - Never silently normalise a doubtful reading into a confident one. The author needs to
   know exactly where to check.
 
-Output only the transcription. No preamble, no explanation, no notes about image quality,
-no trailing summary.
+Output plain text and markdown only. Never emit HTML tags — an underlined heading becomes a
+markdown heading, not `<u>`.
+
+Output only the transcription. No preamble, no explanation, no notes about image quality, no
+trailing summary. Never output your own reasoning about what a word might be: decide, or mark
+it `[?]`, and transcribe nothing else.
