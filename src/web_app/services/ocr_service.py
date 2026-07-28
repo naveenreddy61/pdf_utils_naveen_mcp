@@ -64,6 +64,20 @@ def load_ocr_prompt() -> str:
     )
 
 
+def extract_token_usage(response) -> Tuple[int, int]:
+    """Return (input_tokens, output_tokens) from a GenAI response.
+
+    Thinking tokens are billed as output but arrive in a separate field, so counting only
+    candidates_token_count understates cost — by ~3x at MEDIUM thinking. Fold them in so
+    the reported figures match the bill.
+    """
+    usage = getattr(response, "usage_metadata", None)
+    if not usage:
+        return 0, 0
+    thoughts = getattr(usage, "thoughts_token_count", None) or 0
+    return (usage.prompt_token_count or 0), (usage.candidates_token_count or 0) + thoughts
+
+
 def build_ocr_config(
     system_instruction: str,
     thinking_level: str = OCR_THINKING_LEVEL,
@@ -227,10 +241,8 @@ async def ocr_pdf_subset_with_llm(
         extracted_text = response.text
         
         # Get token usage from GenAI response
-        usage = response.usage_metadata
-        input_tokens = usage.prompt_token_count if usage else 0
-        output_tokens = usage.candidates_token_count if usage else 0
-        
+        input_tokens, output_tokens = extract_token_usage(response)
+
         # Save to cache
         await save_ocr_to_cache(
             cache_key,
@@ -654,9 +666,7 @@ async def ocr_image_bytes(
 
         extracted_text = response.text or ""
 
-        usage = response.usage_metadata
-        input_tokens = usage.prompt_token_count if usage else 0
-        output_tokens = usage.candidates_token_count if usage else 0
+        input_tokens, output_tokens = extract_token_usage(response)
 
         if cache_key:
             await save_ocr_to_cache(

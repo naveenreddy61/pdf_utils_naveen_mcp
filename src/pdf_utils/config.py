@@ -42,7 +42,7 @@ IMAGE_PREVIEW_SIZE = 300  # Thumbnail display size in pixels
 # OCR with LLM settings
 # Model stubs ("-latest") track Google's newest release in each tier automatically.
 OCR_MODEL = "gemini-flash-lite-latest"  # Direct GenAI model
-OCR_THINKING_LEVEL = "LOW"  # Transcription is not a reasoning task; higher levels embellish
+OCR_THINKING_LEVEL = "MINIMAL"  # See HANDWRITING_THINKING_LEVEL for the measurements
 OCR_TIMEOUT = 60
 OCR_MAX_TOKENS = 4096
 # OCR processes one page at a time for simplicity and reliability
@@ -50,7 +50,19 @@ OCR_MAX_TOKENS = 4096
 # Handwriting OCR (camera capture) settings
 # Kept on separate knobs so a regression in one tier cannot degrade the other.
 HANDWRITING_OCR_MODEL = "gemini-flash-latest"
-HANDWRITING_THINKING_LEVEL = "MEDIUM"
+# MINIMAL, measured — not a guess. Across 5 handwritten pages (standup notes, hour
+# estimates, a question list, a dense demo script, and a page of Ramsey-model calculus),
+# 2 runs per cell, scoring recovery of the hard terms and LaTeX structures:
+#
+#   flash MINIMAL 96.5% (~2.5s, $0.004)   flash LOW  92.2%    flash MEDIUM 80.5% (~20s, $0.031)
+#   lite  MINIMAL 92.6% (~1.6s, $0.001)   lite  LOW  88.7%    lite  MEDIUM 89.0%
+#
+# More thinking made transcription worse, not better, and MEDIUM has a failure mode where
+# the model emits its own deliberation ("Let's read: J-a-s-p-r-e-e-t... Wait!") as the
+# transcription. Transcription is perception, not reasoning — there is nothing to reason
+# about, so the budget gets spent second-guessing correct readings. Raise this only with
+# fresh measurements.
+HANDWRITING_THINKING_LEVEL = "MINIMAL"
 CAPTURE_JPEG_QUALITY = 0.92  # Canvas toBlob quality for camera frames (0.0-1.0)
 
 # Async OCR settings

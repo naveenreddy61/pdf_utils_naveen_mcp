@@ -302,7 +302,7 @@ MAX_IMAGES_PER_PAGE = 12       # Max images extracted per page
 #### OCR Settings
 ```python
 OCR_MODEL = "gemini-flash-lite-latest"  # Stub: newest Flash-Lite
-OCR_THINKING_LEVEL = "LOW"     # Transcription is not a reasoning task
+OCR_THINKING_LEVEL = "MINIMAL" # Measured best for transcription
 OCR_TIMEOUT = 60               # Per-page timeout (seconds)
 OCR_MAX_TOKENS = 4096          # Per-page token limit
 OCR_CONCURRENT_REQUESTS = 50   # Parallel API requests
@@ -310,7 +310,7 @@ OCR_MAX_RETRIES = 3            # Retry failed pages
 
 # Camera capture handwriting OCR
 HANDWRITING_OCR_MODEL = "gemini-flash-latest"
-HANDWRITING_THINKING_LEVEL = "MEDIUM"
+HANDWRITING_THINKING_LEVEL = "MINIMAL"
 CAPTURE_JPEG_QUALITY = 0.92    # Canvas toBlob quality for camera frames
 ```
 
