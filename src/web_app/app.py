@@ -15,6 +15,7 @@ from web_app.routes import api as api_routes
 from web_app.routes import url as url_routes
 from web_app.routes import auth as auth_routes
 from web_app.routes import epub as epub_routes
+from web_app.routes import capture as capture_routes
 
 
 def _auth_check(req, sess):
@@ -48,6 +49,7 @@ def create_app():
     api_routes.setup_routes(app, rt)
     url_routes.setup_routes(app, rt)
     epub_routes.setup_routes(app, rt)
+    capture_routes.setup_routes(app, rt)
     
     # Start background cleanup task when the app starts
     @app.on_event("startup")

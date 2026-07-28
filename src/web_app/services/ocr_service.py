@@ -16,7 +16,7 @@ from google.genai import types
 
 from pdf_utils.config import (
     OCR_MODEL,
-    OCR_TEMPERATURE,
+    OCR_THINKING_LEVEL,
     OCR_TIMEOUT,
     OCR_MAX_TOKENS,
     OCR_CONCURRENT_REQUESTS,
@@ -43,18 +43,43 @@ else:
     client = None
 
 
-def load_ocr_prompt() -> str:
-    """Load the OCR extraction prompt from prompts folder."""
-    prompt_path = Path(__file__).parent.parent / "prompts" / "ocr_prompt_pdf.txt"
+def load_prompt(filename: str, fallback: str) -> str:
+    """Load a prompt file from the prompts folder, falling back to an inline default."""
+    prompt_path = Path(__file__).parent.parent / "prompts" / filename
     try:
         with open(prompt_path, 'r', encoding='utf-8') as f:
             return f.read().strip()
     except FileNotFoundError:
-        return (
-            "Extract all text from this PDF document accurately. "
-            "The document may contain one or two pages. "
-            "Clearly separate the transcribed text for each page using '--- Page [Page Number] ---' as a header."
-        )
+        return fallback
+
+
+def load_ocr_prompt() -> str:
+    """Load the OCR extraction prompt from prompts folder."""
+    return load_prompt(
+        "ocr_prompt_pdf.txt",
+        "Extract all text from this PDF document accurately. "
+        "The document may contain one or two pages. "
+        "Clearly separate the transcribed text for each page using "
+        "'--- Page [Page Number] ---' as a header."
+    )
+
+
+def build_ocr_config(
+    system_instruction: str,
+    thinking_level: str = OCR_THINKING_LEVEL,
+    max_output_tokens: int = OCR_MAX_TOKENS,
+) -> types.GenerateContentConfig:
+    """Build a GenerateContentConfig for an OCR call.
+
+    Gemini 3.x ignores temperature/top_p/top_k, so determinism comes from the system
+    instruction instead. Thinking level is set explicitly rather than left to the model
+    default, which varies by tier.
+    """
+    return types.GenerateContentConfig(
+        system_instruction=system_instruction,
+        thinking_config=types.ThinkingConfig(thinking_level=thinking_level),
+        max_output_tokens=max_output_tokens,
+    )
 
 
 def create_pdf_subset_bytes(pdf_path: Path, page_nums: List[int]) -> bytes:
@@ -188,17 +213,12 @@ async def ocr_pdf_subset_with_llm(
             inline_data=types.Blob(mime_type='application/pdf', data=pdf_subset_bytes)
         )
         
-        contents = [prompt, pdf_part]
-        
         # Make the async API call
         response = await asyncio.wait_for(
             client.aio.models.generate_content(
                 model=OCR_MODEL,
-                contents=contents,
-                config=types.GenerateContentConfig(
-                    temperature=OCR_TEMPERATURE,
-                    max_output_tokens=OCR_MAX_TOKENS  # Only one page
-                )
+                contents=[pdf_part],
+                config=build_ocr_config(prompt)  # Only one page
             ),
             timeout=OCR_TIMEOUT
         )
@@ -541,20 +561,38 @@ async def process_document_async(
     }
 
 
-async def ocr_image_file(
-    image_path: Path,
+MIME_TYPES_BY_EXT = {
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.png': 'image/png',
+    '.webp': 'image/webp',
+}
+
+
+async def ocr_image_bytes(
+    image_bytes: bytes,
+    mime_type: str = 'image/jpeg',
+    label: str = 'image',
+    system_instruction: Optional[str] = None,
+    model: str = OCR_MODEL,
+    thinking_level: str = OCR_THINKING_LEVEL,
+    use_cache: bool = True,
     progress_callback: Optional[Callable[[str], None]] = None
 ) -> Dict:
     """
-    Perform OCR on a standalone image file using Google GenAI.
+    Perform OCR on raw image bytes using Google GenAI.
 
-    This is simpler than PDF OCR since:
-    - No page extraction needed
-    - Single image = single API call
-    - Can directly send image bytes
+    Simpler than PDF OCR: no page extraction, single image = single API call.
 
     Args:
-        image_path: Path to image file
+        image_bytes: Raw image data
+        mime_type: MIME type of the image data
+        label: Human-readable name used in progress messages and cache rows
+        system_instruction: Prompt to use; defaults to the standard OCR prompt
+        model: Model ID to call
+        thinking_level: Thinking level for the call
+        use_cache: Whether to read from and write to the OCR cache. Disable for camera
+            captures, where frames are never byte-identical so lookups always miss.
         progress_callback: Optional callback for progress updates
 
     Returns:
@@ -568,117 +606,81 @@ async def ocr_image_file(
             "Then set: export GOOGLE_API_KEY='your-key-here'"
         )
 
-    # Initialize cache database
-    await init_cache_database()
-
     start_time = time.time()
-    image_filename = image_path.name
 
     if progress_callback:
-        progress_callback(f"Processing image: {image_filename}")
+        progress_callback(f"Processing image: {label}")
 
     try:
-        # Read image file
-        with open(image_path, 'rb') as f:
-            image_bytes = f.read()
+        cache_key = compute_content_hash(image_bytes) if use_cache else None
 
-        # Create cache key based on image hash
-        cache_key = compute_content_hash(image_bytes)
+        if cache_key:
+            await init_cache_database()
+            cached_result = await get_cached_ocr(cache_key)
 
-        # Check cache first
-        cached_result = await get_cached_ocr(cache_key)
+            if cached_result:
+                text, input_tokens, output_tokens = cached_result
 
-        if cached_result:
-            text, input_tokens, output_tokens = cached_result
-            processing_time = time.time() - start_time
+                if progress_callback:
+                    progress_callback("✅ Complete: Retrieved from cache")
 
-            if progress_callback:
-                progress_callback(f"✅ Complete: Retrieved from cache")
+                return {
+                    "full_text": text,
+                    "total_input_tokens": input_tokens,
+                    "total_output_tokens": output_tokens,
+                    "method": "cached",
+                    "processing_time": time.time() - start_time,
+                    "cached": True,
+                    "summary": f"Retrieved from cache ({input_tokens + output_tokens:,} tokens saved)"
+                }
 
-            return {
-                "full_text": text,
-                "total_input_tokens": input_tokens,
-                "total_output_tokens": output_tokens,
-                "method": "cached",
-                "processing_time": processing_time,
-                "cached": True,
-                "summary": f"Retrieved from cache ({input_tokens + output_tokens:,} tokens saved)"
-            }
+        prompt = system_instruction or load_ocr_prompt()
 
-        # Load OCR prompt
-        prompt = load_ocr_prompt()
-
-        # Determine MIME type based on file extension
-        ext = image_path.suffix.lower()
-        mime_types = {
-            '.jpg': 'image/jpeg',
-            '.jpeg': 'image/jpeg',
-            '.png': 'image/png',
-            '.webp': 'image/webp'
-        }
-        mime_type = mime_types.get(ext, 'image/jpeg')
-
-        # Create a Part object with the image data
         image_part = types.Part(
             inline_data=types.Blob(mime_type=mime_type, data=image_bytes)
         )
 
-        contents = [prompt, image_part]
-
         if progress_callback:
-            progress_callback(f"Sending image to LLM for OCR...")
+            progress_callback("Sending image to LLM for OCR...")
 
-        # Make the async API call
         response = await asyncio.wait_for(
             client.aio.models.generate_content(
-                model=OCR_MODEL,
-                contents=contents,
-                config=types.GenerateContentConfig(
-                    temperature=OCR_TEMPERATURE,
-                    max_output_tokens=OCR_MAX_TOKENS
-                )
+                model=model,
+                contents=[image_part],
+                config=build_ocr_config(prompt, thinking_level=thinking_level)
             ),
             timeout=OCR_TIMEOUT
         )
 
-        # Extract response
-        extracted_text = response.text
+        extracted_text = response.text or ""
 
-        # Get token usage from GenAI response
         usage = response.usage_metadata
         input_tokens = usage.prompt_token_count if usage else 0
         output_tokens = usage.candidates_token_count if usage else 0
 
-        # Save to cache
-        await save_ocr_to_cache(
-            cache_key,
-            extracted_text,
-            input_tokens,
-            output_tokens,
-            image_filename,
-            1  # Page 1 for images
-        )
-
-        processing_time = time.time() - start_time
-
-        # Clean old cache entries in background
-        asyncio.create_task(clean_old_cache_entries())
+        if cache_key:
+            await save_ocr_to_cache(
+                cache_key, extracted_text, input_tokens, output_tokens, label, 1
+            )
+            # Clean old cache entries in background
+            asyncio.create_task(clean_old_cache_entries())
 
         if progress_callback:
-            progress_callback(f"✅ Complete: Used {input_tokens:,} input + {output_tokens:,} output tokens")
+            progress_callback(
+                f"✅ Complete: Used {input_tokens:,} input + {output_tokens:,} output tokens"
+            )
 
         return {
             "full_text": extracted_text,
             "total_input_tokens": input_tokens,
             "total_output_tokens": output_tokens,
             "method": "llm",
-            "processing_time": processing_time,
+            "processing_time": time.time() - start_time,
             "cached": False,
             "summary": f"Used {input_tokens:,} input + {output_tokens:,} output tokens"
         }
 
     except Exception as e:
-        processing_time = time.time() - start_time
         error_msg = f"Error processing image: {str(e)}"
 
         if progress_callback:
@@ -689,11 +691,36 @@ async def ocr_image_file(
             "total_input_tokens": 0,
             "total_output_tokens": 0,
             "method": "failed",
-            "processing_time": processing_time,
+            "processing_time": time.time() - start_time,
             "cached": False,
             "error": str(e),
             "summary": f"Failed to process image: {str(e)}"
         }
+
+
+async def ocr_image_file(
+    image_path: Path,
+    progress_callback: Optional[Callable[[str], None]] = None
+) -> Dict:
+    """
+    Perform OCR on a standalone image file using Google GenAI.
+
+    Args:
+        image_path: Path to image file
+        progress_callback: Optional callback for progress updates
+
+    Returns:
+        Dictionary with processing results and statistics
+    """
+    with open(image_path, 'rb') as f:
+        image_bytes = f.read()
+
+    return await ocr_image_bytes(
+        image_bytes,
+        mime_type=MIME_TYPES_BY_EXT.get(image_path.suffix.lower(), 'image/jpeg'),
+        label=image_path.name,
+        progress_callback=progress_callback
+    )
 
 
 # Backward compatibility alias

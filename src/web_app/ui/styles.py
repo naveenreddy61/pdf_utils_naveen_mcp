@@ -539,4 +539,37 @@ h4 { font-size: 0.8rem; font-weight: 600; margin-bottom: 0.5rem; color: var(--te
   float: right; margin-top: 0.25rem;
 }
 .logout-link:hover { color: var(--text); }
+
+/* ── Camera capture ──────────────────────────────────────────────────────── */
+.cap-media {
+  display: block;
+  width: 100%;
+  max-height: 60vh;
+  object-fit: contain;
+  background: #000;
+  border-radius: var(--radius);
+  margin-bottom: 0.5rem;
+}
+.cap-status {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-bottom: 0.625rem;
+  min-height: 1.2rem;
+}
+.cap-status-error { color: var(--red); font-weight: 500; }
+.cap-textarea {
+  width: 100%;
+  min-height: 320px;
+  resize: vertical;
+  white-space: pre-wrap;
+  background: var(--surface-alt);
+  padding: 0.875rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--primary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8125rem;
+  line-height: 1.6;
+  color: var(--text);
+}
 """
