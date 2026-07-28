@@ -25,6 +25,7 @@ The project includes a FastHTML web application (`src/web_app/`) for browser-bas
   - `main.py`: File upload and main page
   - `pdf.py`: PDF processing operations (TOC, text, images, etc.)
   - `url.py`: URL-to-Markdown and URL-to-PDF-OCR routes
+  - `capture.py`: Camera capture handwriting OCR (`/capture`)
   - `api.py`: API endpoints
 - **UI Components**: `src/web_app/ui/components.py` - Reusable UI elements
 - **Services**: `src/web_app/services/` - Core service layer
@@ -118,6 +119,46 @@ URL_PDF_PRINT_WAIT_MS   = 1500       # ms: delay after scroll (lets pop-ups appe
 URL_PDF_QUALITY_CHECK_ENABLED = True # LLM quality assessment before full OCR
 URL_PDF_CHROMIUM_EXECUTABLE = ""     # leave empty to use playwright's own binary
 ```
+
+## Camera Capture Handwriting OCR (`routes/capture.py`)
+
+Transcribes a handwritten paper notebook held up to a webcam or tablet camera. Solves the
+"photo on phone → cloud sync → download → attach to a chat" round trip: open `/capture`,
+hold the page up, two clicks, text on the clipboard.
+
+**Routes:**
+- `GET /capture` → the capture page (live preview, Capture / Retake / Transcribe)
+- `POST /process/notebook-ocr` → multipart frame in, HTML result fragment out
+
+**Pipeline:** `getUserMedia` preview → `<canvas>` frame grab at native resolution →
+`toBlob` JPEG (`CAPTURE_JPEG_QUALITY`) → stuffed into a hidden file input via `DataTransfer`
+so HTMX posts it as a normal multipart form → `ocr_image_bytes()` with the handwriting
+system instruction → editable textarea + Copy button.
+
+**Design decisions worth preserving:**
+- **Nothing touches disk.** Unlike the upload flow, the frame and the transcription are
+  never persisted. `fast_app(static_path='uploads')` serves that directory statically, so
+  writing notebook photos there would expose them needlessly.
+- **Cache is bypassed** (`use_cache=False`). Camera frames are never byte-identical, so
+  lookups always miss while still writing personal notes into the 60-day cache.
+- **Camera lives on its own page, not the index.** An embedded preview on `/` would trigger
+  a camera permission prompt on every visit for every unrelated PDF task.
+- **Copy reads from the textarea**, deliberately deviating from the "fetch text from a
+  download route" convention below. That rule exists for large PDF transcriptions; one
+  notebook page is a few KB, and reading the textarea preserves the user's manual edits.
+- **Prompt is tuned against two specific failure modes** — the model double-spacing output
+  because it reads the notebook's printed ruled lines as blank lines, and dropping the
+  indentation of nested lines. Both regressed visibly when the prompt was looser; keep the
+  explicit instructions in `prompts/ocr_prompt_handwriting.txt`.
+- **One page or a two-page spread** is auto-detected by looking for the binding gutter. Two
+  pages are separated by a line containing only `--- page break ---`.
+- Uncertain words are marked `[?]`, unreadable ones `[illegible]`, cut-off ones `[cut off]`,
+  so the author knows exactly where to check rather than trusting a confident guess.
+
+**Browser requirements:** `getUserMedia` and `navigator.clipboard` both require a secure
+context — HTTPS or localhost. The page checks `window.isSecureContext` up front and shows an
+explanatory message rather than failing silently. Camera tracks are stopped on `pagehide` so
+the hardware indicator light goes out.
 
 ## Markdown-to-PDF Conversion (`md_service.py`)
 
@@ -258,7 +299,7 @@ GOOGLE_API_KEY=test uvx --from git+https://github.com/naveenreddy61/anki_nav_mcp
 The OCR service has been migrated from LiteLLM to Google GenAI for native PDF processing with enhanced performance and reliability.
 
 ### Core Components:
-- **Google GenAI Client**: Direct PDF processing with `gemini-2.5-flash-lite` model
+- **Google GenAI Client**: Direct PDF processing with the `gemini-flash-lite-latest` stub
 - **PDF Chunking**: Configurable page grouping (default: 2 pages per API call)
 - **Stable Caching**: File-based cache keys for deterministic performance
 - **Async Batch Processing**: Semaphore-controlled concurrent requests
@@ -266,12 +307,28 @@ The OCR service has been migrated from LiteLLM to Google GenAI for native PDF pr
 ### Key Configuration:
 ```python
 # config.py
-OCR_MODEL = "gemini-2.5-flash-lite"  # Direct GenAI model (no litellm prefix)
+OCR_MODEL = "gemini-flash-lite-latest"   # Stub: tracks newest Flash-Lite release
+OCR_THINKING_LEVEL = "LOW"               # Transcription is not a reasoning task
 # OCR processes one page at a time for simplicity and reliability
-OCR_CONCURRENT_REQUESTS = 20         # Rate limiting for API calls
-OCR_TEMPERATURE = 0.1                # Low temperature for consistent OCR
-OCR_MAX_TOKENS = 4096               # Per-page token limit
+OCR_CONCURRENT_REQUESTS = 50             # Rate limiting for API calls
+OCR_MAX_TOKENS = 4096                    # Per-page token limit
+
+HANDWRITING_OCR_MODEL = "gemini-flash-latest"   # Camera capture uses the full Flash tier
+HANDWRITING_THINKING_LEVEL = "MEDIUM"
 ```
+
+### Gemini 3.x parameter rules (important)
+- **`temperature`, `top_p`, `top_k` are deprecated.** Gemini 3.x accepts them but silently
+  ignores them, and future generations will return HTTP 400. Do not reintroduce them.
+  Determinism comes from the **system instruction** instead.
+- **Prompts go in `system_instruction`**, not `contents[0]`. Build every OCR call's config
+  with `ocr_service.build_ocr_config(system_instruction, thinking_level=..., max_output_tokens=...)`
+  so all call sites stay consistent.
+- **Set `thinking_level` explicitly** (`MINIMAL` / `LOW` / `MEDIUM` / `HIGH`). Defaults vary
+  by tier — Flash-Lite defaults to minimal, Flash to medium — so relying on the default
+  makes cost and latency change silently when a stub moves.
+- **Model stubs auto-upgrade.** `-latest` stubs follow Google's newest release in that tier.
+  Print and handwriting are on separate knobs so a regression in one cannot degrade the other.
 
 ### Processing Flow:
 1. **Single Page Processing**: Process one page at a time for reliability and simplicity

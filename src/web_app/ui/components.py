@@ -1,7 +1,7 @@
 """UI components for the web application."""
 
 from fasthtml.common import *
-from pdf_utils.config import MAX_FILE_SIZE_MB
+from pdf_utils.config import MAX_FILE_SIZE_MB, CAPTURE_JPEG_QUALITY
 
 
 # ── Upload ──────────────────────────────────────────────────────────────────
@@ -923,5 +923,259 @@ def epub_image_gallery(images_data: dict, file_hash: str):
             cls="action-row",
         ),
         Div(*image_items, cls="image-extraction-grid"),
+        cls="result-area",
+    )
+
+
+# ── Camera capture (handwriting OCR) ────────────────────────────────────────
+
+_CAPTURE_JS = """
+(function () {
+  var video   = document.getElementById('cap-video');
+  var canvas  = document.getElementById('cap-canvas');
+  var status  = document.getElementById('cap-status');
+  var input   = document.getElementById('cap-frame');
+  var shoot   = document.getElementById('cap-shoot');
+  var retake  = document.getElementById('cap-retake');
+  var send    = document.getElementById('cap-send');
+  var stream  = null;
+
+  function say(msg, isError) {
+    status.textContent = msg;
+    status.className = isError ? 'cap-status cap-status-error' : 'cap-status';
+  }
+
+  function stop() {
+    if (stream) { stream.getTracks().forEach(function (t) { t.stop(); }); stream = null; }
+  }
+
+  function start() {
+    if (!window.isSecureContext) {
+      say('Camera needs HTTPS or localhost. This page was loaded over an insecure '
+          + 'connection, so the browser will not grant camera access.', true);
+      return;
+    }
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      say('This browser does not support camera capture.', true);
+      return;
+    }
+    say('Starting camera…');
+    // Ask for the highest resolution the device will give us; browsers clamp to the
+    // nearest supported mode rather than failing. Handwriting needs the pixels.
+    navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: { ideal: 'environment' },
+        width:  { ideal: 3840 },
+        height: { ideal: 2160 }
+      },
+      audio: false
+    }).then(function (s) {
+      stream = s;
+      video.srcObject = s;
+      return video.play();
+    }).then(function () {
+      var t = stream.getVideoTracks()[0];
+      var st = t.getSettings ? t.getSettings() : {};
+      say('Camera ready — ' + (st.width || video.videoWidth) + '×'
+          + (st.height || video.videoHeight)
+          + '. Fill the frame with the page, hold steady, then capture.');
+      shoot.disabled = false;
+    }).catch(function (err) {
+      shoot.disabled = true;
+      if (err && (err.name === 'NotAllowedError' || err.name === 'SecurityError')) {
+        say('Camera permission was denied. Allow camera access for this site in your '
+            + 'browser settings, then reload this page.', true);
+      } else if (err && (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError')) {
+        say('No camera was found on this device.', true);
+      } else if (err && err.name === 'NotReadableError') {
+        say('The camera is in use by another application. Close it and reload.', true);
+      } else {
+        say('Could not start the camera: ' + (err && err.name ? err.name : err), true);
+      }
+    });
+  }
+
+  shoot.addEventListener('click', function () {
+    if (!video.videoWidth) { say('Camera is still starting up — try again.', true); return; }
+    canvas.width  = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+    canvas.toBlob(function (blob) {
+      if (!blob) { say('Could not read the frame. Try again.', true); return; }
+      var dt = new DataTransfer();
+      dt.items.add(new File([blob], 'capture.jpg', { type: 'image/jpeg' }));
+      input.files = dt.files;
+      canvas.style.display = 'block';
+      video.style.display  = 'none';
+      shoot.style.display  = 'none';
+      retake.style.display = 'inline-flex';
+      send.disabled = false;
+      say('Captured at ' + canvas.width + '×' + canvas.height + ' ('
+          + Math.round(blob.size / 1024) + ' KB). Readable? Transcribe it, or retake.');
+    }, 'image/jpeg', __QUALITY__);
+  });
+
+  retake.addEventListener('click', function () {
+    input.value = '';
+    canvas.style.display = 'none';
+    video.style.display  = 'block';
+    retake.style.display = 'none';
+    shoot.style.display  = 'inline-flex';
+    send.disabled = true;
+    say('Retaking — line up the page and capture again.');
+  });
+
+  // Release the camera so the hardware indicator light goes out.
+  window.addEventListener('pagehide', stop);
+  start();
+})();
+"""
+
+
+def capture_card():
+    """Index-page card linking to the camera capture page.
+
+    Deliberately a link, not an inline camera: embedding a live preview on the index
+    would prompt for camera permission on every visit to the app.
+    """
+    return Div(
+        Div(
+            Div(cls="or-line"),
+            Span("or capture handwriting with a camera", cls="or-label"),
+            Div(cls="or-line"),
+            cls="or-divider",
+        ),
+        Div(
+            Div(
+                Span("📷", cls="url-section-icon"),
+                Div(
+                    P("Notebook to Text", cls="url-section-title"),
+                    P("Hold a page up to the webcam and transcribe the handwriting",
+                      cls="url-section-sub"),
+                    cls="url-section-text",
+                ),
+                cls="url-section-header",
+            ),
+            Button(
+                "Open Camera Capture",
+                onclick="window.location.href='/capture'",
+                style="width:100%;justify-content:center;",
+            ),
+            cls="url-card",
+        ),
+    )
+
+
+def capture_page():
+    """Full camera capture page: live preview, capture, retake, transcribe."""
+    return Titled(
+        "Notebook to Text",
+        Div(
+            A("← Back", href="/", cls="logout-link"),
+            P("Hold one page or an open two-page spread up to the camera. "
+              "Fill the frame, avoid glare, and keep the page flat.",
+              cls="page-subtitle"),
+            Div(
+                Video(
+                    id="cap-video",
+                    autoplay=True,
+                    playsinline=True,
+                    muted=True,
+                    cls="cap-media",
+                ),
+                Canvas(id="cap-canvas", cls="cap-media", style="display:none;"),
+                P("Starting camera…", id="cap-status", cls="cap-status"),
+                Form(
+                    Input(type="file", name="frame", id="cap-frame",
+                          accept="image/jpeg", style="display:none;"),
+                    Div(
+                        Button("📷 Capture", type="button", id="cap-shoot",
+                               disabled=True, cls="button"),
+                        Button("↺ Retake", type="button", id="cap-retake",
+                               cls="button", style="display:none;background:var(--orange);"),
+                        Button("✨ Transcribe", type="submit", id="cap-send",
+                               disabled=True, cls="button",
+                               style="background:var(--green);"),
+                        Div(
+                            Span(cls="spinner"),
+                            # Transcription runs ~20s at MEDIUM thinking. Saying so stops
+                            # the wait reading as a hang.
+                            Span("Transcribing… this takes about 20 seconds"),
+                            id="cap-indicator",
+                            cls="htmx-indicator",
+                            style=("color:var(--primary);font-size:0.8rem;"
+                                   "font-weight:500;gap:0.35rem;"),
+                        ),
+                        cls="action-row",
+                    ),
+                    hx_post="/process/notebook-ocr",
+                    hx_target="#capture-result",
+                    hx_swap="innerHTML",
+                    hx_indicator="#cap-indicator",
+                    # Without this a second tap during the long wait bills a second capture.
+                    hx_disabled_elt="#cap-send, #cap-retake",
+                    hx_encoding="multipart/form-data",
+                ),
+                cls="url-card",
+            ),
+            Div(id="capture-result"),
+            Script(_CAPTURE_JS.replace("__QUALITY__", str(CAPTURE_JPEG_QUALITY))),
+            cls="app-wrap",
+        ),
+    )
+
+
+def notebook_ocr_result(results):
+    """Result panel for a camera capture: editable transcription plus a copy button."""
+    text = results["full_text"]
+    in_tok = results.get("total_input_tokens", 0)
+    out_tok = results.get("total_output_tokens", 0)
+
+    return Div(
+        Div(
+            Div(
+                P("Characters", cls="metric-label"),
+                P(f"{len(text):,}", cls="metric-value"),
+                cls="metric-box",
+            ),
+            Div(
+                P("Words", cls="metric-label"),
+                P(f"{len(text.split()):,}", cls="metric-value"),
+                cls="metric-box",
+            ),
+            Div(
+                P("Time", cls="metric-label"),
+                P(f"{results.get('processing_time', 0):.1f}s", cls="metric-value"),
+                cls="metric-box",
+            ),
+            Div(
+                P("Tokens", cls="metric-label"),
+                P(f"{in_tok + out_tok:,}", cls="metric-value"),
+                cls="metric-box",
+            ),
+            cls="metrics-row",
+            style="margin-bottom:0.5rem;",
+        ),
+        Div(
+            Button(
+                "📋 Copy",
+                type="button",
+                # Copied straight from the textarea rather than fetched from a download
+                # route: one notebook page is a few KB, well under any clipboard limit,
+                # and this keeps edits made here in the copied text.
+                onclick=(
+                    "var t=document.getElementById('cap-text').value;"
+                    "navigator.clipboard.writeText(t).then(()=>{"
+                    "this.textContent='✅ Copied!';this.style.background='var(--green)';"
+                    "setTimeout(()=>{this.textContent='📋 Copy';"
+                    "this.style.background='';},2000);});"
+                ),
+                cls="button",
+            ),
+            cls="action-row",
+        ),
+        P("Editable — fix any misreadings before copying. Uncertain words are marked [?].",
+          style="font-size:0.78rem;color:var(--text-muted);margin-bottom:0.35rem;"),
+        Textarea(text, id="cap-text", cls="cap-textarea", spellcheck="false"),
         cls="result-area",
     )

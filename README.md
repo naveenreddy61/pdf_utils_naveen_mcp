@@ -9,13 +9,26 @@ A powerful, browser-based application for processing PDF documents and images wi
 - **Page Range Extraction**: Extract specific page ranges into new PDF files
 - **Page to Image Conversion**: Convert PDF pages to high-quality PNG or JPEG images (72-300 DPI)
 - **Text Extraction**: Extract text from PDF pages with optional Markdown formatting
-- **AI-Powered OCR**: Extract text from scanned PDFs and images using Google Gemini 2.5 Flash Lite
+- **AI-Powered OCR**: Extract text from scanned PDFs and images using Google Gemini Flash Lite
 
 ### Image Processing
 - **Multi-Format Support**: Upload and process JPG, PNG, WEBP images
 - **Smart Image Extraction**: Automatically extract and filter images from PDFs
 - **Image OCR**: Perform OCR on standalone image files
 - **Batch Processing**: Process multiple pages or images efficiently
+
+### Handwriting Capture (`/capture`)
+- **Notebook to Text**: Hold a paper notebook up to a webcam or tablet camera and get the
+  handwriting transcribed — no phone photo, no cloud sync, no download round trip
+- **One Page or Two**: Auto-detects a single page vs. an open two-page spread and separates
+  the pages with a `--- page break ---` marker
+- **Verbatim Transcription**: Preserves your own wording, line breaks, bullets, and
+  indentation — no summarising or silent spelling "fixes"
+- **Marked Uncertainty**: Doubtful words are flagged `[?]` and unreadable ones `[illegible]`,
+  so you know exactly where to check
+- **Editable Result**: Fix any misreading in the textarea before copying
+- **Nothing Stored**: The frame and the transcription are processed in memory and never
+  written to disk
 
 ### User Experience
 - **Drag-and-Drop Upload**: Easy file uploading with automatic processing
@@ -288,12 +301,17 @@ MAX_IMAGES_PER_PAGE = 12       # Max images extracted per page
 
 #### OCR Settings
 ```python
-OCR_MODEL = "gemini-2.5-flash-lite"
-OCR_TEMPERATURE = 0.1          # Low for consistent output
+OCR_MODEL = "gemini-flash-lite-latest"  # Stub: newest Flash-Lite
+OCR_THINKING_LEVEL = "LOW"     # Transcription is not a reasoning task
 OCR_TIMEOUT = 60               # Per-page timeout (seconds)
 OCR_MAX_TOKENS = 4096          # Per-page token limit
-OCR_CONCURRENT_REQUESTS = 20   # Parallel API requests
+OCR_CONCURRENT_REQUESTS = 50   # Parallel API requests
 OCR_MAX_RETRIES = 3            # Retry failed pages
+
+# Camera capture handwriting OCR
+HANDWRITING_OCR_MODEL = "gemini-flash-latest"
+HANDWRITING_THINKING_LEVEL = "MEDIUM"
+CAPTURE_JPEG_QUALITY = 0.92    # Canvas toBlob quality for camera frames
 ```
 
 #### Cache Settings

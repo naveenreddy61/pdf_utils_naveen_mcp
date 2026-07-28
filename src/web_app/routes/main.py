@@ -22,7 +22,7 @@ from web_app.services.md_service import convert_md_to_pdf_bytes
 from web_app.ui.components import (
     upload_form, file_info_display, operation_buttons,
     error_message, upload_progress_poll, upload_progress_status,
-    url_input_form, auto_download_script,
+    url_input_form, auto_download_script, capture_card,
 )
 
 # Map MIME types / extensions to internal file_type labels
@@ -189,11 +189,12 @@ def setup_routes(app, rt):
             Div(
                 A("Logout", href="/logout", cls="logout-link") if LOGIN_PASSWORD else None,
                 P(
-                    f"PDF · PPT · MD · Images · URL to Markdown  ·  max {MAX_FILE_SIZE_MB} MB  ·  files kept 30 days",
+                    f"PDF · PPT · MD · Images · URL to Markdown · Camera  ·  max {MAX_FILE_SIZE_MB} MB  ·  files kept 30 days",
                     cls="page-subtitle",
                 ),
                 upload_form(),
                 url_input_form(),
+                capture_card(),
                 cls="app-wrap",
             )
         )
