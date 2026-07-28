@@ -19,8 +19,8 @@ from pdf_utils.config import (
     URL_PDF_CHROMIUM_EXECUTABLE,
     OCR_MODEL,
     OCR_TIMEOUT,
-    OCR_TEMPERATURE,
 )
+from .ocr_service import build_ocr_config
 
 load_dotenv()
 
@@ -284,18 +284,14 @@ async def check_pdf_quality(pdf_bytes: bytes) -> tuple[str, str]:
         return "POOR", "Almost no text found on first pages — page may be image-only or empty."
 
     prompt = _load_quality_prompt()
-    full_prompt = prompt + "\n" + sample_text
 
     try:
         # Use native async API + timeout, matching ocr_service.py pattern
         response = await asyncio.wait_for(
             _client.aio.models.generate_content(
                 model=OCR_MODEL,
-                contents=full_prompt,
-                config=_types.GenerateContentConfig(
-                    temperature=OCR_TEMPERATURE,
-                    max_output_tokens=100,
-                ),
+                contents=sample_text,
+                config=build_ocr_config(prompt, max_output_tokens=100),
             ),
             timeout=OCR_TIMEOUT,
         )

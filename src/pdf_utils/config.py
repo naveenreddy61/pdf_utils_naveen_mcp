@@ -40,11 +40,18 @@ MAX_IMAGES_PER_PAGE = 25  # Maximum images to extract per page
 IMAGE_PREVIEW_SIZE = 300  # Thumbnail display size in pixels
 
 # OCR with LLM settings
-OCR_MODEL = "gemini-3.1-flash-lite"  # Direct GenAI model
-OCR_TEMPERATURE = 0.1
+# Model stubs ("-latest") track Google's newest release in each tier automatically.
+OCR_MODEL = "gemini-flash-lite-latest"  # Direct GenAI model
+OCR_THINKING_LEVEL = "LOW"  # Transcription is not a reasoning task; higher levels embellish
 OCR_TIMEOUT = 60
 OCR_MAX_TOKENS = 4096
 # OCR processes one page at a time for simplicity and reliability
+
+# Handwriting OCR (camera capture) settings
+# Kept on separate knobs so a regression in one tier cannot degrade the other.
+HANDWRITING_OCR_MODEL = "gemini-flash-latest"
+HANDWRITING_THINKING_LEVEL = "MEDIUM"
+CAPTURE_JPEG_QUALITY = 0.92  # Canvas toBlob quality for camera frames (0.0-1.0)
 
 # Async OCR settings
 OCR_CONCURRENT_REQUESTS = 50  # Max concurrent LLM requests
