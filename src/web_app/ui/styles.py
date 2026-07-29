@@ -206,51 +206,6 @@ main > h1, main.container > h1 {
   white-space: nowrap;
 }
 
-/* ── Recent files ─────────────────────────────────────────── */
-.recent-card {
-  margin-top: 0.75rem;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  padding: 0.75rem 1rem;
-  box-shadow: var(--shadow-sm);
-}
-.recent-card h4 { margin-bottom: 0.4rem; }
-.recent-list { display: flex; flex-direction: column; }
-
-.recent-row {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  width: 100%;
-  padding: 0.45rem 0.4rem;
-  background: transparent;
-  color: var(--text);
-  border: none;
-  border-radius: var(--radius);
-  border-bottom: 1px solid var(--border);
-  font-size: 0.85rem;
-  font-weight: 500;
-  text-align: left;
-  cursor: pointer;
-}
-.recent-row:last-child { border-bottom: none; }
-.recent-row:hover { background: var(--primary-light); color: var(--primary); }
-
-.recent-icon { font-size: 1rem; flex-shrink: 0; }
-.recent-name {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.recent-pills { display: flex; gap: 0.3rem; flex-shrink: 0; }
-/* Below ~520px the pills crowd out the filename; keep only the age. */
-@media (max-width: 520px) {
-  .recent-pills .pill:not(:last-child) { display: none; }
-}
-
 /* ── Operations grid ──────────────────────────────────────── */
 .ops-grid {
   display: grid;
@@ -591,6 +546,7 @@ details[open] > .details-summary { margin-bottom: 0.25rem; }
   text-decoration: none;
 }
 .capture-link:hover { border-color: var(--primary); background: var(--primary-light); }
+.capture-link-icon { font-size: 1rem; flex-shrink: 0; }
 .capture-link-sub { font-size: 0.8rem; color: var(--text-muted); }
 @media (max-width: 520px) { .capture-link-sub { display: none; } }
 
