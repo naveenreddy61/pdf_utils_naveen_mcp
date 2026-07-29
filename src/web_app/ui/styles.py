@@ -552,6 +552,34 @@ details[open] > .details-summary { margin-bottom: 0.25rem; }
   accent-color: var(--primary);
 }
 
+/* ── URL action buttons (two modes, one input) ────────────── */
+.url-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+  margin-bottom: 0.625rem;
+}
+@media (max-width: 460px) { .url-actions { grid-template-columns: 1fr; } }
+
+/* ── Camera capture link row ──────────────────────────────── */
+.capture-link {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+  padding: 0.7rem 1rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  color: var(--text);
+  font-size: 0.875rem;
+  text-decoration: none;
+}
+.capture-link:hover { border-color: var(--primary); background: var(--primary-light); }
+.capture-link-sub { font-size: 0.8rem; color: var(--text-muted); }
+@media (max-width: 520px) { .capture-link-sub { display: none; } }
+
 /* ── URL result header ────────────────────────────────────── */
 .url-result-header { margin-bottom: 0.875rem; }
 .url-result-title  { font-weight: 700; font-size: 1rem; margin-bottom: 0.25rem; }

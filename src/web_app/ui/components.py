@@ -390,7 +390,19 @@ def _op_btn(icon: str, label: str, extra_cls: str = "", **htmx_attrs):
 # ── URL to Markdown ──────────────────────────────────────────────────────────
 
 def url_input_form():
-    """URL input section — card below the file upload."""
+    """One URL input, two ways to extract it.
+
+    Both buttons post the same form to different routes via button-level
+    `hx-post`, so the method is chosen *after* pasting rather than before.
+    htmx cancels the native submit for buttons inside a form, which also
+    suppresses the browser's validation bubble — the onclick guard calls
+    reportValidity() itself and stops htmx's own handler when it fails.
+    """
+    validate_guard = (
+        "if(!this.form.reportValidity()){"
+        "event.preventDefault();event.stopImmediatePropagation();}"
+    )
+
     return Div(
         # ── divider ──────────────────────────────────────────────────────
         Div(
@@ -399,13 +411,14 @@ def url_input_form():
             Div(cls="or-line"),
             cls="or-divider",
         ),
-        # ── URL to Markdown card ──────────────────────────────────────────
         Div(
             Div(
                 Span("🔗", cls="url-section-icon"),
                 Div(
-                    P("URL to Markdown", cls="url-section-title"),
-                    P("Paste any article, blog post, or docs page",
+                    P("Extract from URL", cls="url-section-title"),
+                    P("Markdown — trafilatura, fast, clean for articles. "
+                      "Browser + OCR — renders in headless Chrome, then AI OCR; "
+                      "handles JS, cookie banners & pop-ups.",
                       cls="url-section-sub"),
                     cls="url-section-text",
                 ),
@@ -413,16 +426,37 @@ def url_input_form():
             ),
             Form(
                 Input(
-                    type="text",
+                    type="url",
                     name="url",
                     placeholder="https://example.com/article",
                     autocomplete="off",
+                    required=True,
                     style="margin-bottom:0.5rem;",
                 ),
-                Button(
-                    "Convert to Markdown",
-                    type="submit",
-                    style="width:100%;justify-content:center;margin-bottom:0.625rem;",
+                Div(
+                    Button(
+                        "⚡ Markdown — fast",
+                        type="submit",
+                        onclick=validate_guard,
+                        hx_post="/process/url-to-markdown",
+                        hx_include="closest form",
+                        hx_target="#url-result",
+                        hx_swap="innerHTML",
+                        hx_indicator="#url-indicator",
+                        style="justify-content:center;",
+                    ),
+                    Button(
+                        "🖨️ Browser + OCR — thorough",
+                        type="submit",
+                        onclick=validate_guard,
+                        hx_post="/process/url-to-pdf-ocr",
+                        hx_include="closest form",
+                        hx_target="#url-result",
+                        hx_swap="innerHTML",
+                        hx_indicator="#url-pdf-indicator",
+                        style="justify-content:center;background:var(--purple);",
+                    ),
+                    cls="url-actions",
                 ),
                 Div(
                     Label(
@@ -437,6 +471,8 @@ def url_input_form():
                         Input(type="checkbox", name="include_images", value="on"),
                         " Images",
                     ),
+                    Span("(Markdown mode only)",
+                         style="font-size:0.75rem;color:var(--text-muted);"),
                     Div(
                         Span(cls="spinner"),
                         Span("Fetching…"),
@@ -444,42 +480,6 @@ def url_input_form():
                         cls="htmx-indicator",
                         style="color:var(--primary);font-size:0.8rem;font-weight:500;gap:0.35rem;",
                     ),
-                    cls="url-options",
-                ),
-                hx_post="/process/url-to-markdown",
-                hx_target="#url-result",
-                hx_swap="innerHTML",
-                hx_indicator="#url-indicator",
-            ),
-            cls="url-card",
-        ),
-        Div(id="url-result"),
-        # ── URL to PDF OCR card ───────────────────────────────────────────
-        Div(
-            Div(
-                Span("🖨️", cls="url-section-icon"),
-                Div(
-                    P("URL via Browser + OCR", cls="url-section-title"),
-                    P("Renders page in headless Chrome, prints to PDF, then runs AI OCR — handles JS, cookie banners & pop-ups",
-                      cls="url-section-sub"),
-                    cls="url-section-text",
-                ),
-                cls="url-section-header",
-            ),
-            Form(
-                Input(
-                    type="text",
-                    name="url",
-                    placeholder="https://example.com/article",
-                    autocomplete="off",
-                    style="margin-bottom:0.5rem;",
-                ),
-                Button(
-                    "Convert via Browser (OCR)",
-                    type="submit",
-                    style="width:100%;justify-content:center;margin-bottom:0.625rem;background:var(--purple);",
-                ),
-                Div(
                     Div(
                         Span(cls="spinner"),
                         Span("Rendering page…"),
@@ -489,15 +489,10 @@ def url_input_form():
                     ),
                     cls="url-options",
                 ),
-                hx_post="/process/url-to-pdf-ocr",
-                hx_target="#url-pdf-result",
-                hx_swap="innerHTML",
-                hx_indicator="#url-pdf-indicator",
             ),
             cls="url-card",
-            style="margin-top:0.75rem;",
         ),
-        Div(id="url-pdf-result"),
+        Div(id="url-result"),
     )
 
 
@@ -1181,36 +1176,20 @@ _CAPTURE_JS = """
 
 
 def capture_card():
-    """Index-page card linking to the camera capture page.
+    """Index-page link to the camera capture page.
 
     Deliberately a link, not an inline camera: embedding a live preview on the index
-    would prompt for camera permission on every visit to the app.
+    would prompt for camera permission on every visit to the app. One row rather
+    than a full card so the whole index still fits one desktop viewport.
     """
-    return Div(
-        Div(
-            Div(cls="or-line"),
-            Span("or capture handwriting with a camera", cls="or-label"),
-            Div(cls="or-line"),
-            cls="or-divider",
-        ),
-        Div(
-            Div(
-                Span("📷", cls="url-section-icon"),
-                Div(
-                    P("Notebook to Text", cls="url-section-title"),
-                    P("Hold a page up to the webcam and transcribe the handwriting",
-                      cls="url-section-sub"),
-                    cls="url-section-text",
-                ),
-                cls="url-section-header",
-            ),
-            Button(
-                "Open Camera Capture",
-                onclick="window.location.href='/capture'",
-                style="width:100%;justify-content:center;",
-            ),
-            cls="url-card",
-        ),
+    return A(
+        Span("📷", cls="recent-icon"),
+        Span("Notebook to Text", style="font-weight:600;"),
+        Span("transcribe handwriting with your camera",
+             cls="capture-link-sub"),
+        Span("→", style="margin-left:auto;color:var(--text-muted);"),
+        href="/capture",
+        cls="capture-link",
     )
 
 
