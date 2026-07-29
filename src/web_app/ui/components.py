@@ -1,42 +1,125 @@
 """UI components for the web application."""
 
+import json
+
 from fasthtml.common import *
 from pdf_utils.config import MAX_FILE_SIZE_MB, CAPTURE_JPEG_QUALITY
 
 
 # ── Upload ──────────────────────────────────────────────────────────────────
 
-def upload_form():
-    """Upload zone with a styled label button over a hidden file input.
+# Extensions the server accepts. Shared by the file input's `accept` attribute
+# and the client-side pre-check, so a drop of the wrong type fails instantly
+# instead of after a round trip.
+UPLOAD_EXTENSIONS = [
+    ".pdf", ".epub", ".jpg", ".jpeg", ".png", ".webp", ".ppt", ".pptx", ".md",
+]
 
-    Clicking the label opens the OS file dialog (standard label behaviour).
-    HTMX listens for `change` on the hidden input and posts as multipart/form-data.
-    The label is a plain inline-block so flexbox centers it perfectly under the icon.
+_UPLOAD_JS = """
+(function () {
+  var zone  = document.getElementById('upload-zone');
+  var input = document.getElementById('upload-input');
+  var err   = document.getElementById('upload-error');
+  if (!zone || !input) return;
+  var ACCEPT = __ACCEPT__;
+
+  function fail(msg) { err.textContent = msg; err.style.display = 'block'; }
+  function clearErr() { err.textContent = ''; err.style.display = 'none'; }
+
+  function accepted(file) {
+    var name = (file.name || '').toLowerCase();
+    var dot  = name.lastIndexOf('.');
+    var ext  = dot === -1 ? '' : name.slice(dot);
+    if (ACCEPT.indexOf(ext) !== -1) return true;
+    fail((ext ? ext + ' files are' : 'That file is') + ' not supported. Accepted: '
+         + ACCEPT.join(' '));
+    return false;
+  }
+
+  // Hand the file to the existing hidden input so the HTMX change-trigger
+  // upload fires unchanged — the same DataTransfer trick the capture page uses.
+  function send(file) {
+    if (!file || !accepted(file)) return;
+    clearErr();
+    var dt = new DataTransfer();
+    dt.items.add(file);
+    input.files = dt.files;
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+
+  // Whole card opens the dialog. The guard stops the programmatic input.click()
+  // from bubbling back into this handler.
+  zone.addEventListener('click', function (e) {
+    if (e.target.closest('#upload-input, .file-label-btn')) return;
+    input.click();
+  });
+
+  ['dragenter', 'dragover'].forEach(function (ev) {
+    zone.addEventListener(ev, function (e) {
+      e.preventDefault(); e.stopPropagation();
+      zone.classList.add('upload-zone-drag');
+    });
+  });
+  zone.addEventListener('dragleave', function (e) {
+    // Moving over a child fires dragleave on the parent — ignore those.
+    if (zone.contains(e.relatedTarget)) return;
+    zone.classList.remove('upload-zone-drag');
+  });
+  zone.addEventListener('drop', function (e) {
+    e.preventDefault(); e.stopPropagation();
+    zone.classList.remove('upload-zone-drag');
+    send(e.dataTransfer && e.dataTransfer.files[0]);
+  });
+
+  // Without this, a file dropped just outside the zone navigates the tab to it.
+  ['dragover', 'drop'].forEach(function (ev) {
+    window.addEventListener(ev, function (e) {
+      if (!zone.contains(e.target)) e.preventDefault();
+    });
+  });
+
+  document.addEventListener('paste', function (e) {
+    var f = e.clipboardData && e.clipboardData.files && e.clipboardData.files[0];
+    if (f) { e.preventDefault(); send(f); }
+  });
+})();
+"""
+
+
+def upload_form():
+    """Upload zone: click anywhere, drop a file on it, or paste one.
+
+    HTMX listens for `change` on the hidden file input and posts as
+    multipart/form-data; drag-drop and paste both route through that same input
+    so there is exactly one upload path.
     """
     return Div(
         Form(
             # ── Upload card ───────────────────────────────────────────────
             Div(
                 P("📁", cls="upload-icon"),
-                # Styled label acts as the visible "Choose File" button
-                Label(
-                    "Choose File",
-                    Input(
-                        type="file",
-                        name="file",
-                        accept=".pdf,.epub,.jpg,.jpeg,.png,.webp,.ppt,.pptx,.md",
-                        style="display:none",
-                        hx_post="/upload",
-                        hx_encoding="multipart/form-data",
-                        hx_trigger="change",
-                        hx_target="#upload-result",
-                        hx_swap="innerHTML",
-                        hx_indicator="#upload-indicator",
-                    ),
-                    cls="file-label-btn",
+                Input(
+                    type="file",
+                    name="file",
+                    id="upload-input",
+                    accept=",".join(UPLOAD_EXTENSIONS),
+                    style="display:none",
+                    hx_post="/upload",
+                    hx_encoding="multipart/form-data",
+                    hx_trigger="change",
+                    hx_target="#upload-result",
+                    hx_swap="innerHTML",
+                    hx_indicator="#upload-indicator",
                 ),
+                # Styled label acts as the visible "Choose File" button
+                Label("Choose File", cls="file-label-btn",
+                      **{"for": "upload-input"}),
+                P("or drop a file here · or paste one",
+                  cls="upload-hint"),
                 P(f"PDF · EPUB · PPT · MD · JPG · PNG · WEBP  ·  max {MAX_FILE_SIZE_MB} MB",
                   cls="upload-hint"),
+                P("", id="upload-error", cls="upload-error"),
+                id="upload-zone",
                 cls="upload-zone",
             ),
             # ── In-flight indicator (shown by HTMX during HTTP POST) ──────
@@ -47,6 +130,7 @@ def upload_form():
             ),
         ),
         Div(id="upload-result"),
+        Script(_UPLOAD_JS.replace("__ACCEPT__", json.dumps(UPLOAD_EXTENSIONS))),
         cls="upload-section",
     )
 

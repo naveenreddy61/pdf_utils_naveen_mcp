@@ -94,13 +94,23 @@ main > h1, main.container > h1 {
   gap: 0.5rem;
   transition: border-color var(--t), background var(--t);
 }
-.upload-zone:hover {
+.upload-zone:hover,
+.upload-zone-drag {
   border-color: var(--primary);
   background: var(--primary-light);
 }
+/* Children must not eat the drop's dragleave/drop events. */
+.upload-zone-drag * { pointer-events: none; }
 
 .upload-icon { font-size: 2.25rem; line-height: 1; }
 .upload-hint { font-size: 0.8rem; color: var(--text-muted); }
+.upload-error {
+  display: none;
+  margin-top: 0.5rem;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--red);
+}
 
 /* Styled label – acts as the "Choose File" button, perfectly centerable */
 .file-label-btn {
