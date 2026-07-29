@@ -61,10 +61,14 @@ is fine because the work is re-runnable and the OCR cache makes a rerun cheap.
 
 There are two ways bytes reach the server, chosen in the browser by file size:
 
-| | ≤ `GCS_DIRECT_THRESHOLD_MB` (90) | above it |
+| | ≤ `GCS_DIRECT_THRESHOLD_MB` (5) | above it |
 |---|---|---|
 | route | `POST /upload` multipart | `/api/request-upload` → PUT to GCS → `/api/confirm-upload` |
 | why | one transfer, no cloud account | Cloudflare and nginx both cap a body at 100 MB |
+
+The threshold sits far below the 100 MB it guards, on purpose: the cloud route
+is the half that fails silently (stale key, dropped CORS rule), and a path only
+taken by rare huge files is one you find broken at the worst moment.
 
 Both then call the **same** `_run_upload_task`, which is the point: PPTX/Markdown
 conversion, dedup, page counting and the polling progress UI must not depend on

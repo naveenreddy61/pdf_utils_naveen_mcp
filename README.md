@@ -678,11 +678,17 @@ In local mode the app:
 ## GCS Setup – Large File Upload Bypass
 
 Uploads to the deployed app travel through Cloudflare and nginx, both of which
-cap a request body at **100 MB**. Files over `GCS_DIRECT_THRESHOLD_MB` (90 MB by
+cap a request body at **100 MB**. Files over `GCS_DIRECT_THRESHOLD_MB` (5 MB by
 default) are therefore PUT by the browser straight to Google Cloud Storage via a
 short-lived signed URL, and the server pulls them back out of the bucket — so
 neither proxy ever sees the bytes. Anything smaller stays on the plain multipart
 path, which is a single transfer instead of two and needs no cloud account.
+
+The threshold sits far below the 100 MB it protects against, deliberately. The
+cloud route is the half that fails silently — an expired key, a dropped CORS
+rule, a deleted bucket — and a route only used for rare huge files is a route
+you discover is broken at the worst moment. Raise it if the doubled transfer
+for mid-size documents costs more than that assurance is worth.
 
 ### What you need from GCP
 
@@ -723,7 +729,7 @@ GCS_BUCKET_NAME=your-bucket-name
 GCS_CREDENTIALS_FILE=/absolute/path/to/service-account-key.json
 GCS_SIGNED_URL_EXPIRY_MINUTES=15   # how long browser has to start the PUT
 GCS_DELETE_AFTER_DOWNLOAD=true     # clean up temp GCS objects after download
-GCS_DIRECT_THRESHOLD_MB=90         # files above this skip the proxy
+GCS_DIRECT_THRESHOLD_MB=5          # files above this skip the proxy
 MAX_FILE_SIZE_GCS_MB=500           # ceiling for the direct route
 ```
 
@@ -733,7 +739,7 @@ upload uses the multipart path and the two `/api/*-upload` routes return 503.
 ### Upload flow
 
 ```
-                     ≤ 90 MB                          > 90 MB
+                      ≤ 5 MB                           > 5 MB
 Browser → POST /upload (multipart)     Browser → /api/request-upload → signed PUT URL
                   │                    Browser → GCS  (direct, skips Cloudflare + nginx)
                   │                    Browser → /api/confirm-upload

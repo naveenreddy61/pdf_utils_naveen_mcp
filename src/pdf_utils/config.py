@@ -118,9 +118,13 @@ GCS_SIGNED_URL_EXPIRY_MINUTES: int = int(_os.getenv("GCS_SIGNED_URL_EXPIRY_MINUT
 GCS_DELETE_AFTER_DOWNLOAD: bool = _os.getenv("GCS_DELETE_AFTER_DOWNLOAD", "true").lower() == "true"
 GCS_ENABLED: bool = bool(GCS_BUCKET_NAME)
 
-# Files above this go via GCS. Kept under nginx's 100m so a multipart upload can
-# never be the one that gets truncated at the proxy.
-GCS_DIRECT_THRESHOLD_MB = int(_os.getenv("GCS_DIRECT_THRESHOLD_MB", "90"))
+# Files above this go via GCS. Must stay under nginx's 100m, or a multipart
+# upload could be the one that gets truncated at the proxy. Set well below that
+# ceiling on purpose: the cloud route is the one that breaks silently when a
+# signed URL, a CORS rule or a service-account key goes stale, so it is better
+# exercised by ordinary uploads than reserved for the rare huge file. The cost is
+# two transfers instead of one for mid-size documents.
+GCS_DIRECT_THRESHOLD_MB = int(_os.getenv("GCS_DIRECT_THRESHOLD_MB", "5"))
 GCS_DIRECT_THRESHOLD_BYTES = GCS_DIRECT_THRESHOLD_MB * 1024 * 1024
 
 # Ceiling for the GCS path. Higher than the multipart cap because no proxy sees
