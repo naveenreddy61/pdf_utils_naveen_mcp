@@ -426,6 +426,20 @@ label { font-size: 0.875rem; font-weight: 500; color: var(--text); margin-bottom
 h3 { font-size: 1rem;   font-weight: 700; margin-bottom: 0.75rem; }
 h4 { font-size: 0.8rem; font-weight: 600; margin-bottom: 0.5rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; }
 
+/* ── Collapsed detail sections (<details>) ────────────────── */
+details { margin: 0.5rem 0; }
+.details-summary {
+  cursor: pointer;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  font-weight: 500;
+  padding: 0.3rem 0;
+  list-style: revert;   /* keep the native disclosure triangle */
+  user-select: none;
+}
+.details-summary:hover { color: var(--text); }
+details[open] > .details-summary { margin-bottom: 0.25rem; }
+
 /* ── Page-detail list (OCR) ───────────────────────────────── */
 .page-detail-list { list-style: none; padding: 0; max-height: 200px; overflow-y: auto; }
 .page-detail-list li { padding: 0.2rem 0; font-size: 0.85rem; }

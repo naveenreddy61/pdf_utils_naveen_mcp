@@ -535,36 +535,61 @@ def setup_routes(app, rt):
     
     @rt('/extract-text-llm-form/{file_hash}')
     def extract_text_llm_form(file_hash: str):
-        """Show form for LLM-based text extraction with OCR."""
+        """OCR form — one click runs the whole document.
+
+        The range inputs are pre-filled 1→N and tucked into a <details>, so the
+        common case (OCR everything) needs no field editing, while a partial run
+        is still one disclosure away.
+        """
         file_info = get_file_info(file_hash)
         if not file_info:
             return Div(error_message("File not found."))
-        
+
+        n = file_info.page_count
+        # Keeps the submit button honest when a custom range is typed.
+        relabel_js = (
+            "(function(f){"
+            "var s=+f.querySelector('[name=start_page]').value,"
+            "e=+f.querySelector('[name=end_page]').value,"
+            f"b=f.querySelector('.ocr-submit'),n={n};"
+            "b.textContent=(s===1&&e===n)?'🤖 OCR All '+n+' Page'+(n===1?'':'s')"
+            ":'🤖 OCR Pages '+s+'–'+e;"
+            "})(this.closest('form'))"
+        )
+
         return Div(
             H3("Extract Text — LLM OCR"),
             Div(
-                Span(f"{file_info.page_count} pages total", cls="pill"),
+                Span(f"{n} pages total", cls="pill"),
                 Span("AI · LaTeX · caching", cls="pill"),
                 cls="file-meta", style="margin-bottom:.75rem;",
             ),
             Form(
                 Div(
-                    Div(Label("Start Page"),
-                        Input(type="number", name="start_page",
-                              min="1", max=str(file_info.page_count),
-                              value="1", required=True)),
-                    Div(Label("End Page"),
-                        Input(type="number", name="end_page",
-                              min="1", max=str(file_info.page_count),
-                              value=str(min(5, file_info.page_count)), required=True)),
-                    cls="form-row",
-                ),
-                Div(
-                    Button("Extract with OCR", type="submit",
+                    Button(f"🤖 OCR All {n} Page{'' if n == 1 else 's'}",
+                           type="submit", cls="ocr-submit",
                            style="background:var(--purple);"),
                     Span(Span(cls="spinner"), " Running OCR…",
                          id="ocr-indicator", cls="htmx-indicator"),
                     cls="action-row",
+                    style="margin-top:0;",
+                ),
+                Details(
+                    Summary("Page range", cls="details-summary"),
+                    Div(
+                        Div(Label("Start Page"),
+                            Input(type="number", name="start_page",
+                                  min="1", max=str(n),
+                                  value="1", required=True,
+                                  oninput=relabel_js)),
+                        Div(Label("End Page"),
+                            Input(type="number", name="end_page",
+                                  min="1", max=str(n),
+                                  value=str(n), required=True,
+                                  oninput=relabel_js)),
+                        cls="form-row",
+                        style="margin-top:.6rem;margin-bottom:0;",
+                    ),
                 ),
                 hx_post=f"/process/extract-text-llm/{file_hash}",
                 hx_target="#operation-result",
@@ -572,7 +597,7 @@ def setup_routes(app, rt):
             ),
             cls="result-area"
         )
-    
+
     
     @rt('/process/extract-text-llm/{file_hash}')
     async def process_extract_text_llm(file_hash: str, start_page: int, end_page: int):
