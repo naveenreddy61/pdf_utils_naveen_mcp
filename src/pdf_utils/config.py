@@ -1,10 +1,27 @@
 """Configuration settings for PDF Utilities Web Application."""
 
+import os as _os
 from pathlib import Path
+
+
+def _flag(name: str) -> bool:
+    return _os.getenv(name, "").strip().lower() in ("1", "true", "yes", "on")
+
+
+# ── Local mode ───────────────────────────────────────────────────────────────
+# Set by `pdf-web-app --local` (which exports PDF_LOCAL_MODE before this module
+# is first imported). Local mode assumes no reverse proxy and no cloud account:
+# uploads go straight to the process, and GCS is switched off even if a bucket
+# is still configured in .env.
+LOCAL_MODE: bool = _flag("PDF_LOCAL_MODE")
 
 # File handling settings
 FILE_RETENTION_DAYS = 30
-MAX_FILE_SIZE_MB = 100
+# Cap for the plain multipart POST. In production this is bounded by nginx's
+# `client_max_body_size 100m` and Cloudflare's 100 MB proxy limit; locally there
+# is no proxy in the way, so the only real constraint is RAM (the upload is read
+# into memory before hashing).
+MAX_FILE_SIZE_MB = int(_os.getenv("MAX_FILE_SIZE_MB", "500" if LOCAL_MODE else "100"))
 MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
 
 # Directory settings
@@ -87,12 +104,32 @@ URL_PDF_QUALITY_CHECK_ENABLED = True # Run LLM quality check before full OCR
 URL_PDF_CHROMIUM_EXECUTABLE = ""
 
 # Auth settings
-import os as _os
 LOGIN_PASSWORD: str = _os.getenv("LOGIN_PASSWORD", "")
 SESSION_SECRET_KEY: str = _os.getenv("SESSION_SECRET_KEY", "pdf-app-dev-secret-change-me")
 
-# GCS settings for large file upload bypass
-GCS_BUCKET_NAME: str = _os.getenv("GCS_BUCKET_NAME", "")
+# ── GCS: large-file upload bypass ────────────────────────────────────────────
+# The browser PUTs the file straight to a signed GCS URL, so the bytes never
+# pass through Cloudflare or nginx; the server then pulls it back out of the
+# bucket. Only worth the extra round trip for files the proxy would reject,
+# hence the threshold below — smaller files stay on the plain multipart path.
+GCS_BUCKET_NAME: str = "" if LOCAL_MODE else _os.getenv("GCS_BUCKET_NAME", "")
 GCS_CREDENTIALS_FILE: str | None = _os.getenv("GCS_CREDENTIALS_FILE") or None
 GCS_SIGNED_URL_EXPIRY_MINUTES: int = int(_os.getenv("GCS_SIGNED_URL_EXPIRY_MINUTES", "15"))
 GCS_DELETE_AFTER_DOWNLOAD: bool = _os.getenv("GCS_DELETE_AFTER_DOWNLOAD", "true").lower() == "true"
+GCS_ENABLED: bool = bool(GCS_BUCKET_NAME)
+
+# Files above this go via GCS. Kept under nginx's 100m so a multipart upload can
+# never be the one that gets truncated at the proxy.
+GCS_DIRECT_THRESHOLD_MB = int(_os.getenv("GCS_DIRECT_THRESHOLD_MB", "90"))
+GCS_DIRECT_THRESHOLD_BYTES = GCS_DIRECT_THRESHOLD_MB * 1024 * 1024
+
+# Ceiling for the GCS path. Higher than the multipart cap because no proxy sees
+# these bytes — but the server still holds the whole file in memory while
+# hashing it, so this is not a free number to raise.
+MAX_FILE_SIZE_GCS_MB = int(_os.getenv("MAX_FILE_SIZE_GCS_MB", "500"))
+MAX_FILE_SIZE_GCS_BYTES = MAX_FILE_SIZE_GCS_MB * 1024 * 1024
+
+# The largest upload this deployment will accept by any route — what the UI
+# should advertise.
+EFFECTIVE_MAX_UPLOAD_MB = max(MAX_FILE_SIZE_MB,
+                              MAX_FILE_SIZE_GCS_MB if GCS_ENABLED else 0)

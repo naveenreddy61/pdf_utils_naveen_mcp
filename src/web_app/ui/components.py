@@ -3,7 +3,10 @@
 import json
 
 from fasthtml.common import *
-from pdf_utils.config import MAX_FILE_SIZE_MB, CAPTURE_JPEG_QUALITY
+from pdf_utils.config import (
+    CAPTURE_JPEG_QUALITY,
+    GCS_ENABLED, GCS_DIRECT_THRESHOLD_BYTES, EFFECTIVE_MAX_UPLOAD_MB,
+)
 
 
 # ── Upload ──────────────────────────────────────────────────────────────────
@@ -20,8 +23,13 @@ _UPLOAD_JS = """
   var zone  = document.getElementById('upload-zone');
   var input = document.getElementById('upload-input');
   var err   = document.getElementById('upload-error');
+  var out   = document.getElementById('upload-result');
   if (!zone || !input) return;
-  var ACCEPT = __ACCEPT__;
+  var ACCEPT    = __ACCEPT__;
+  var GCS       = __GCS__;          // is the direct-to-cloud route available?
+  var THRESHOLD = __THRESHOLD__;    // bytes above which we use it
+  var MAX_BYTES = __MAX_BYTES__;
+  var MAX_LABEL = __MAX_LABEL__;
 
   function fail(msg) { err.textContent = msg; err.style.display = 'block'; }
   function clearErr() { err.textContent = ''; err.style.display = 'none'; }
@@ -30,22 +38,125 @@ _UPLOAD_JS = """
     var name = (file.name || '').toLowerCase();
     var dot  = name.lastIndexOf('.');
     var ext  = dot === -1 ? '' : name.slice(dot);
-    if (ACCEPT.indexOf(ext) !== -1) return true;
-    fail((ext ? ext + ' files are' : 'That file is') + ' not supported. Accepted: '
-         + ACCEPT.join(' '));
-    return false;
+    if (ACCEPT.indexOf(ext) === -1) {
+      fail((ext ? ext + ' files are' : 'That file is') + ' not supported. Accepted: '
+           + ACCEPT.join(' '));
+      return false;
+    }
+    if (file.size > MAX_BYTES) {
+      fail('That file is ' + (file.size / 1048576).toFixed(0) + ' MB — the limit is '
+           + MAX_LABEL + '.');
+      return false;
+    }
+    return true;
   }
 
+  // ── Transport A: plain multipart ──────────────────────────────────────────
   // Hand the file to the existing hidden input so the HTMX change-trigger
   // upload fires unchanged — the same DataTransfer trick the capture page uses.
-  function send(file) {
-    if (!file || !accepted(file)) return;
-    clearErr();
+  function sendMultipart(file) {
     var dt = new DataTransfer();
     dt.items.add(file);
     input.files = dt.files;
     input.dispatchEvent(new Event('change', { bubbles: true }));
   }
+
+  // ── Transport B: direct to cloud storage ──────────────────────────────────
+  // Only for files the proxy in front of us would reject. The browser PUTs to a
+  // signed URL, then the server pulls the object back down and joins the exact
+  // same background-task pipeline the multipart path uses.
+  function showProgress(phase, pct) {
+    out.innerHTML =
+      '<div class="upload-progress">' +
+        '<div class="progress-phase"><span class="spinner"></span><span></span></div>' +
+        '<div class="progress-track"><div class="progress-fill"></div></div>' +
+      '</div>';
+    setProgress(phase, pct);
+  }
+  function setProgress(phase, pct) {
+    var label = out.querySelector('.progress-phase span:last-child');
+    var fill  = out.querySelector('.progress-fill');
+    if (label) label.textContent = phase;
+    if (fill)  fill.style.width = pct + '%';
+  }
+  function abort(msg) {
+    out.innerHTML = '';
+    fail(msg);
+  }
+
+  function sendDirect(file) {
+    showProgress('Preparing upload…', 2);
+    fetch('/api/request-upload', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        filename: file.name,
+        size: file.size,
+        content_type: file.type || 'application/octet-stream'
+      })
+    })
+    .then(function (r) { return r.json(); })
+    .then(function (data) {
+      if (!data.signed_url) throw new Error(data.error || 'no upload URL returned');
+
+      var xhr = new XMLHttpRequest();
+      xhr.open('PUT', data.signed_url, true);
+      xhr.setRequestHeader('Content-Type', data.content_type);
+      // Cap the PUT's share of the bar at 85% — the server still has to fetch
+      // the object back and process it after this finishes.
+      xhr.upload.onprogress = function (e) {
+        if (e.lengthComputable) {
+          setProgress('Uploading to cloud storage…',
+                      Math.round(e.loaded / e.total * 85));
+        }
+      };
+      xhr.onerror = function () { abort('Network error while uploading.'); };
+      xhr.onload = function () {
+        if (xhr.status < 200 || xhr.status >= 300) {
+          abort('Cloud upload failed (HTTP ' + xhr.status + ').');
+          return;
+        }
+        setProgress('Handing off to server…', 88);
+        fetch('/api/confirm-upload', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            gcs_object_name: data.gcs_object_name,
+            original_filename: file.name
+          })
+        })
+        .then(function (r) { return r.text(); })
+        .then(function (html) {
+          // The reply is a polling fragment; htmx only wires up hx-* attributes
+          // on nodes it knows about, and innerHTML is invisible to it.
+          out.innerHTML = html;
+          if (window.htmx) window.htmx.process(out);
+        })
+        .catch(function (e) { abort('Server error: ' + e.message); });
+      };
+      xhr.send(file);
+    })
+    .catch(function (e) { abort('Could not start upload: ' + e.message); });
+  }
+
+  // Every entry point (file picker, drop, paste) ends up assigning to the
+  // hidden input, so routing and validation live in one place: the htmx hook
+  // below, which fires no matter how the file got there.
+  function send(file) {
+    if (!file) return;
+    sendMultipart(file);
+  }
+
+  input.addEventListener('htmx:beforeRequest', function (e) {
+    var file = input.files && input.files[0];
+    if (!file) return;
+    if (!accepted(file)) { e.preventDefault(); return; }
+    clearErr();
+    if (GCS && file.size > THRESHOLD) {
+      e.preventDefault();   // too big for the proxy — take the cloud route
+      sendDirect(file);
+    }
+  });
 
   // Whole card opens the dialog. The guard stops the programmatic input.click()
   // from bubbling back into this handler.
@@ -92,6 +203,12 @@ def upload_form():
     HTMX listens for `change` on the hidden file input and posts as
     multipart/form-data; drag-drop and paste both route through that same input
     so there is exactly one upload path.
+
+    When GCS is configured, files over GCS_DIRECT_THRESHOLD_BYTES take a second
+    transport instead: the browser PUTs them straight to a signed bucket URL,
+    because anything bigger than that is rejected by the proxy in front of the
+    app before the request ever reaches it. Both transports converge on the same
+    background task and the same progress UI.
     """
     return Div(
         Form(
@@ -116,7 +233,7 @@ def upload_form():
                       **{"for": "upload-input"}),
                 P("or drop a file here · or paste one",
                   cls="upload-hint"),
-                P(f"PDF · EPUB · PPT · MD · JPG · PNG · WEBP  ·  max {MAX_FILE_SIZE_MB} MB",
+                P(f"PDF · EPUB · PPT · MD · JPG · PNG · WEBP  ·  max {EFFECTIVE_MAX_UPLOAD_MB} MB",
                   cls="upload-hint"),
                 P("", id="upload-error", cls="upload-error"),
                 id="upload-zone",
@@ -130,7 +247,14 @@ def upload_form():
             ),
         ),
         Div(id="upload-result"),
-        Script(_UPLOAD_JS.replace("__ACCEPT__", json.dumps(UPLOAD_EXTENSIONS))),
+        Script(
+            _UPLOAD_JS
+            .replace("__ACCEPT__",    json.dumps(UPLOAD_EXTENSIONS))
+            .replace("__GCS__",       json.dumps(GCS_ENABLED))
+            .replace("__THRESHOLD__", json.dumps(GCS_DIRECT_THRESHOLD_BYTES))
+            .replace("__MAX_BYTES__", json.dumps(EFFECTIVE_MAX_UPLOAD_MB * 1024 * 1024))
+            .replace("__MAX_LABEL__", json.dumps(f"{EFFECTIVE_MAX_UPLOAD_MB} MB"))
+        ),
         cls="upload-section",
     )
 

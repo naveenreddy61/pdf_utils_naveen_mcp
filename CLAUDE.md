@@ -57,6 +57,50 @@ concurrently, so this is a completion count, not a page walk-through.
 The store is per-process and in-memory — a restart loses in-flight jobs, which
 is fine because the work is re-runnable and the OCR cache makes a rerun cheap.
 
+### Upload transports (`routes/main.py`)
+
+There are two ways bytes reach the server, chosen in the browser by file size:
+
+| | ≤ `GCS_DIRECT_THRESHOLD_MB` (90) | above it |
+|---|---|---|
+| route | `POST /upload` multipart | `/api/request-upload` → PUT to GCS → `/api/confirm-upload` |
+| why | one transfer, no cloud account | Cloudflare and nginx both cap a body at 100 MB |
+
+Both then call the **same** `_run_upload_task`, which is the point: PPTX/Markdown
+conversion, dedup, page counting and the polling progress UI must not depend on
+how the file arrived. `_run_gcs_upload_task` only fetches the object and
+delegates.
+
+Things that will bite you here:
+
+- **`fetch()` does not send `HX-Request`**, so FastHTML wraps a returned
+  component in a full HTML page. Anything the direct-upload JS calls must return
+  `_fragment(...)` (an explicit `HTMLResponse(to_xml(...))`). This bug shipped
+  once already (`f5cc2a7`).
+- **`htmx.process()` is mandatory** after assigning `innerHTML` from JS — htmx
+  never scans nodes it didn't insert, so the polling fragment would sit there
+  inert.
+- **Routing lives in one `htmx:beforeRequest` handler** on the file input, not in
+  the drop/paste handlers. The native file picker fires `change` → htmx posts
+  immediately, so a size check anywhere else is bypassed by simply clicking
+  "Choose File".
+- **`/api/request-upload` must check `MAX_FILE_SIZE_GCS_BYTES`**, not
+  `MAX_FILE_SIZE_BYTES`. Checking the multipart cap there is what made the
+  original bypass unable to accept anything the multipart path couldn't — the
+  feature was live for 19 hours in Feb 2026 and could never have worked.
+- **The whole file is held in memory** while hashing, on both paths. That, not
+  bandwidth, is what bounds `MAX_FILE_SIZE_GCS_MB`.
+
+### Local mode (`--local`)
+
+`pdf-web-app --local` sets `PDF_LOCAL_MODE=1` **before** the first
+`pdf_utils.config` import — config reads env at import time and every module does
+`from pdf_utils.config import ...`, so setting it later would not propagate.
+Local mode binds `127.0.0.1` (auth is off whenever `LOGIN_PASSWORD` is unset,
+so `0.0.0.0` would expose an open app to the LAN), forces `GCS_BUCKET_NAME` empty
+regardless of `.env`, and raises the upload cap to 500 MB since no proxy is in
+the way.
+
 ### Operation form / result split
 
 `operation_buttons()` renders two slots: ops-grid buttons load forms into

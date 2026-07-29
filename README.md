@@ -651,9 +651,38 @@ For issues and questions:
 
 ---
 
+## Running Locally (`--local`)
+
+The GCS bypass below only earns its keep behind a proxy. On a laptop it is pure
+overhead — and it requires a GCP account nobody should need in order to read a
+PDF. `--local` turns it off:
+
+```bash
+pdf-web-app --local          # or: uv run app.py -- --local
+```
+
+In local mode the app:
+
+- **binds `127.0.0.1`** instead of `0.0.0.0`, so it is not exposed to your
+  network (relevant because `LOGIN_PASSWORD` is often unset locally, which
+  disables auth entirely)
+- **ignores `GCS_BUCKET_NAME`** even if `.env` still sets it — every upload goes
+  straight to the process
+- **raises the upload cap to 500 MB**, since the 100 MB default only exists to
+  stay under Cloudflare's proxy limit
+
+`--host` is honoured too, and overrides the loopback default if you pass it.
+
+---
+
 ## GCS Setup – Large File Upload Bypass
 
-By default every upload travels through Cloudflare, which enforces a **100 MB limit** on proxied requests. The GCS integration lets the browser upload directly to Google Cloud Storage via a short-lived signed URL, so Cloudflare never sees the file bytes.
+Uploads to the deployed app travel through Cloudflare and nginx, both of which
+cap a request body at **100 MB**. Files over `GCS_DIRECT_THRESHOLD_MB` (90 MB by
+default) are therefore PUT by the browser straight to Google Cloud Storage via a
+short-lived signed URL, and the server pulls them back out of the bucket — so
+neither proxy ever sees the bytes. Anything smaller stays on the plain multipart
+path, which is a single transfer instead of two and needs no cloud account.
 
 ### What you need from GCP
 
@@ -694,19 +723,41 @@ GCS_BUCKET_NAME=your-bucket-name
 GCS_CREDENTIALS_FILE=/absolute/path/to/service-account-key.json
 GCS_SIGNED_URL_EXPIRY_MINUTES=15   # how long browser has to start the PUT
 GCS_DELETE_AFTER_DOWNLOAD=true     # clean up temp GCS objects after download
+GCS_DIRECT_THRESHOLD_MB=90         # files above this skip the proxy
+MAX_FILE_SIZE_GCS_MB=500           # ceiling for the direct route
 ```
 
-Restart `uv run app.py`. The upload form will automatically switch to the GCS direct-upload path and display a progress bar. If `GCS_BUCKET_NAME` is left empty the app falls back to the original multipart upload.
+Restart the app. If `GCS_BUCKET_NAME` is empty (or `--local` is passed) every
+upload uses the multipart path and the two `/api/*-upload` routes return 503.
 
 ### Upload flow
 
 ```
-Browser → /api/request-upload → signed GCS PUT URL
-Browser → GCS (direct PUT, bypasses Cloudflare)
-Browser → /api/confirm-upload → server pulls file from GCS → local uploads/ → deletes GCS temp object
+                     ≤ 90 MB                          > 90 MB
+Browser → POST /upload (multipart)     Browser → /api/request-upload → signed PUT URL
+                  │                    Browser → GCS  (direct, skips Cloudflare + nginx)
+                  │                    Browser → /api/confirm-upload
+                  ▼                                   ▼
+        background upload task ◄──── server pulls object, deletes it from the bucket
+                  │
+                  ▼
+   hash → dedup → PPTX/MD convert → save → page count → poll returns the file card
 ```
 
+Both routes converge on the same background task, so conversion, deduplication
+and the progress UI behave identically no matter which transport was used.
+
 The service account key (`GCS_CREDENTIALS_FILE`) must be on disk — it is used at runtime to sign URLs. Keep it out of version control (it is already in `.gitignore`).
+
+**Verify the bucket's CORS policy** (a browser PUT fails without it, while
+`curl` succeeds — so test in a browser, not just from the shell):
+
+```bash
+curl -s -i -X OPTIONS -H "Origin: https://your.domain" \
+  -H "Access-Control-Request-Method: PUT" \
+  -H "Access-Control-Request-Headers: content-type" \
+  https://storage.googleapis.com/YOUR_BUCKET/probe | grep -i access-control
+```
 
 ---
 

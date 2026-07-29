@@ -4,6 +4,7 @@
 Usage:
     pdf-web-app              # Start on default port 8000
     pdf-web-app --port 9000  # Start on custom port
+    pdf-web-app --local      # Localhost only, no cloud storage
 """
 
 import os
@@ -67,19 +68,38 @@ def main():
         action='store_true',
         help='Skip API key validation (for testing)'
     )
+    parser.add_argument(
+        '--local',
+        action='store_true',
+        help=('Run as a personal localhost app: bind 127.0.0.1, skip Google '
+              'Cloud Storage even if a bucket is configured, and lift the '
+              'proxy-imposed upload size limit')
+    )
 
     args = parser.parse_args()
 
-    # Validate environment
+    # Load .env first so --local can override what it sets, not the reverse.
+    load_dotenv()
+
     if not args.no_api_key_check:
         has_api_key = validate_environment()
         if has_api_key:
             print("✓ Gemini API key detected", file=sys.stderr)
             print("", file=sys.stderr)
 
+    # config.py reads these at import time, and every module then does
+    # `from pdf_utils.config import ...` — so the environment has to be settled
+    # before the first import below, not after.
+    if args.local:
+        os.environ['PDF_LOCAL_MODE'] = '1'
+        if args.host == "0.0.0.0":
+            args.host = "127.0.0.1"
+
     # Import app after env validation (allows early exit if needed)
     from web_app.app import create_app, serve
-    from pdf_utils.config import SERVER_PORT
+    from pdf_utils.config import (
+        SERVER_PORT, LOCAL_MODE, GCS_ENABLED, EFFECTIVE_MAX_UPLOAD_MB,
+    )
 
     port = args.port if args.port is not None else SERVER_PORT
 
@@ -89,6 +109,9 @@ def main():
     print(f"📂 Upload directory: uploads/")
     print(f"🌐 Server URL: http://{args.host}:{port}")
     print(f"📖 Features: TOC extraction, page extraction, image conversion, text OCR")
+    print(f"🔧 Mode: {'local (127.0.0.1, no cloud storage)' if LOCAL_MODE else 'server'}")
+    print(f"📦 Uploads: max {EFFECTIVE_MAX_UPLOAD_MB} MB"
+          f"{' · large files go direct to GCS' if GCS_ENABLED else ' · direct to app'}")
     print("")
     print("Press Ctrl+C to stop the server")
     print("=" * 70)
@@ -96,7 +119,7 @@ def main():
 
     try:
         app = create_app()
-        serve(app, port=port)
+        serve(app, port=port, host=args.host)
     except KeyboardInterrupt:
         print("\n\n👋 Shutting down gracefully...")
         sys.exit(0)

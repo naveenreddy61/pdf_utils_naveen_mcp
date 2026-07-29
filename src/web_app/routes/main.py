@@ -5,11 +5,12 @@ import uuid
 from datetime import datetime
 from fasthtml.common import *
 from starlette.requests import Request
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, HTMLResponse
 from pdf_utils.config import (
     UPLOAD_DIR, MAX_FILE_SIZE_BYTES, MAX_FILE_SIZE_MB, ALLOWED_EXTENSIONS,
     GCS_BUCKET_NAME, GCS_CREDENTIALS_FILE, GCS_SIGNED_URL_EXPIRY_MINUTES,
-    GCS_DELETE_AFTER_DOWNLOAD,
+    GCS_DELETE_AFTER_DOWNLOAD, MAX_FILE_SIZE_GCS_BYTES, MAX_FILE_SIZE_GCS_MB,
+    EFFECTIVE_MAX_UPLOAD_MB,
 )
 from web_app.core.database import (
     FileRecord, get_file_info, update_last_accessed, insert_file_record
@@ -56,46 +57,23 @@ def _file_type_from_name(filename: str) -> tuple[str, str] | None:
     return _EXT_MAP.get(ext)
 
 
+def _fragment(ft) -> HTMLResponse:
+    """Render an FT node as a bare fragment.
+
+    FastHTML wraps a returned component in a full page unless the request
+    carries `HX-Request`, and the direct-upload flow reaches the server through
+    `fetch()`, which does not send that header. Rendering explicitly keeps the
+    reply a fragment no matter who is calling.
+    """
+    return HTMLResponse(to_xml(ft))
+
+
 def _build_file_result_fragment(file_info, is_existing: bool):
     """Return the HTMX fragment shown after a successful upload."""
     return Div(
         file_info_display(file_info, is_existing),
         operation_buttons(file_info.file_hash, file_info.file_type),
     )
-
-
-async def _register_local_file(content: bytes, original_filename: str, file_type: str):
-    """Hash content, dedup against DB, write to disk, return (FileRecord, is_existing)."""
-    file_hash = calculate_file_hash(content)
-    existing  = get_file_info(file_hash)
-    if existing:
-        update_last_accessed(file_hash)
-        return existing, True
-
-    safe_filename  = sanitize_filename(original_filename)
-    stored_filename = f"{file_hash[:8]}_{safe_filename}"
-    file_path      = UPLOAD_DIR / stored_filename
-
-    await asyncio.to_thread(file_path.write_bytes, content)
-
-    if file_type == "pdf":
-        page_count = await asyncio.to_thread(get_page_count, file_path)
-    elif file_type == "epub":
-        page_count = await asyncio.to_thread(get_epub_chapter_count, file_path)
-    else:
-        page_count = 1
-    file_info = FileRecord(
-        file_hash=file_hash,
-        original_filename=original_filename,
-        stored_filename=stored_filename,
-        file_size=len(content),
-        page_count=page_count,
-        file_type=file_type,
-        upload_date=datetime.now().isoformat(),
-        last_accessed=datetime.now().isoformat(),
-    )
-    insert_file_record(file_info)
-    return file_info, False
 
 
 async def _run_upload_task(
@@ -177,6 +155,48 @@ async def _run_upload_task(
         _tasks[task_id] = {"phase": "error", "pct": 0, "error": str(exc)}
 
 
+async def _run_gcs_upload_task(
+    task_id: str,
+    gcs_object_name: str,
+    original_filename: str,
+    file_type: str,
+) -> None:
+    """Background coroutine: pull a browser-uploaded object out of GCS, then
+    hand off to the ordinary upload task.
+
+    Delegating to _run_upload_task rather than duplicating it is what keeps the
+    two transports honest: PPTX/Markdown conversion, dedup and page counting all
+    happen identically no matter how the bytes arrived.
+    """
+    from web_app.services.gcs_service import download_from_gcs, delete_from_gcs
+
+    tmp_path = UPLOAD_DIR / f"gcs_tmp_{uuid.uuid4().hex[:8]}_{sanitize_filename(original_filename)}"
+    try:
+        _tasks[task_id] = {"phase": "Fetching from cloud storage…", "pct": 10}
+        await asyncio.sleep(0)  # yield so the polling response goes out first
+
+        await download_from_gcs(GCS_BUCKET_NAME, gcs_object_name, tmp_path,
+                                GCS_CREDENTIALS_FILE)
+        content = await asyncio.to_thread(tmp_path.read_bytes)
+
+        if GCS_DELETE_AFTER_DOWNLOAD:
+            # Best-effort: a leftover temp object costs storage, not correctness.
+            try:
+                await delete_from_gcs(GCS_BUCKET_NAME, gcs_object_name,
+                                      GCS_CREDENTIALS_FILE)
+            except Exception as del_err:
+                print(f"Warning: could not delete GCS temp object: {del_err}")
+
+        await _run_upload_task(task_id, content, original_filename, file_type)
+
+    except Exception as exc:
+        import traceback; traceback.print_exc()
+        _tasks[task_id] = {"phase": "error", "pct": 0, "error": str(exc)}
+    finally:
+        if tmp_path.exists():
+            tmp_path.unlink()
+
+
 def setup_routes(app, rt):
     """Set up main routes for the application."""
 
@@ -189,7 +209,7 @@ def setup_routes(app, rt):
             Div(
                 A("Logout", href="/logout", cls="logout-link") if LOGIN_PASSWORD else None,
                 P(
-                    f"PDF · PPT · MD · Images · URL to Markdown · Camera  ·  max {MAX_FILE_SIZE_MB} MB  ·  files kept 30 days",
+                    f"PDF · PPT · MD · Images · URL to Markdown · Camera  ·  max {EFFECTIVE_MAX_UPLOAD_MB} MB  ·  files kept 30 days",
                     cls="page-subtitle",
                 ),
                 upload_form(),
@@ -286,7 +306,9 @@ def setup_routes(app, rt):
             hx_swap="outerHTML",
         )
 
-    # ── GCS direct-upload API routes (kept for backward compat) ──────────────
+    # ── Direct-to-cloud upload (files too big for the proxy) ─────────────────
+    # Used by upload_form()'s JS only when GCS is configured and the file
+    # exceeds GCS_DIRECT_THRESHOLD_BYTES; everything smaller stays on /upload.
 
     @rt('/api/request-upload', methods=['POST'])
     async def request_upload(request: Request):
@@ -311,9 +333,13 @@ def setup_routes(app, rt):
                 {"error": "Unsupported file type."},
                 status_code=400,
             )
-        if size > MAX_FILE_SIZE_BYTES:
+        # Deliberately the GCS ceiling, not MAX_FILE_SIZE_BYTES: these bytes
+        # never touch nginx, so the proxy limit that bounds /upload does not
+        # apply. (Checking the multipart cap here is what made the original
+        # bypass unable to accept anything the multipart path couldn't.)
+        if size > MAX_FILE_SIZE_GCS_BYTES:
             return JSONResponse(
-                {"error": f"File exceeds {MAX_FILE_SIZE_MB} MB limit."},
+                {"error": f"File exceeds the {MAX_FILE_SIZE_GCS_MB} MB limit."},
                 status_code=413,
             )
 
@@ -337,52 +363,40 @@ def setup_routes(app, rt):
 
     @rt('/api/confirm-upload', methods=['POST'])
     async def confirm_upload(request: Request):
-        """Pull a GCS-uploaded file to local storage and register it."""
+        """Start the background pull-and-register job, return the progress UI.
+
+        Returns the same polling fragment as /upload rather than the finished
+        result: fetching a 400 MB object out of the bucket and converting it
+        takes far longer than a request should be held open for.
+        """
         if not GCS_BUCKET_NAME:
-            return error_message("GCS not configured.")
+            return _fragment(error_message("GCS not configured."))
 
         try:
             body             = await request.json()
             gcs_object_name  = str(body.get("gcs_object_name", ""))
             original_filename = str(body.get("original_filename", "unknown"))
         except Exception:
-            return error_message("Invalid confirm-upload request.")
+            return _fragment(error_message("Invalid confirm-upload request."))
 
         if not gcs_object_name:
-            return error_message("gcs_object_name is required.")
+            return _fragment(error_message("gcs_object_name is required."))
+        # The object name is server-issued; refuse anything that tries to walk
+        # outside the prefix we hand out.
+        if not gcs_object_name.startswith("temp-uploads/") or ".." in gcs_object_name:
+            return _fragment(error_message("Invalid object name."))
 
         type_info = _file_type_from_name(original_filename.lower())
         if not type_info:
-            return error_message("Unsupported file type.")
+            return _fragment(error_message("Unsupported file type."))
         _, file_type = type_info
 
-        safe_tmp = sanitize_filename(original_filename)
-        tmp_path = UPLOAD_DIR / f"gcs_tmp_{safe_tmp}"
+        task_id = uuid.uuid4().hex[:12]
+        _tasks[task_id] = {"phase": "Starting…", "pct": 5}
 
-        try:
-            from web_app.services.gcs_service import download_from_gcs, delete_from_gcs
+        asyncio.create_task(
+            _run_gcs_upload_task(task_id, gcs_object_name, original_filename, file_type)
+        )
+        asyncio.get_event_loop().call_later(300, lambda: _tasks.pop(task_id, None))
 
-            print(f"Pulling {gcs_object_name} from GCS …")
-            await download_from_gcs(GCS_BUCKET_NAME, gcs_object_name, tmp_path,
-                                    GCS_CREDENTIALS_FILE)
-
-            content   = tmp_path.read_bytes()
-            file_info, is_existing = await _register_local_file(
-                content, original_filename, file_type
-            )
-
-            if GCS_DELETE_AFTER_DOWNLOAD:
-                try:
-                    await delete_from_gcs(GCS_BUCKET_NAME, gcs_object_name,
-                                         GCS_CREDENTIALS_FILE)
-                except Exception as del_err:
-                    print(f"Warning: could not delete GCS temp: {del_err}")
-
-            return _build_file_result_fragment(file_info, is_existing)
-
-        except Exception as exc:
-            import traceback; traceback.print_exc()
-            return error_message(f"Error processing file: {exc}")
-        finally:
-            if tmp_path.exists():
-                tmp_path.unlink()
+        return _fragment(upload_progress_poll(task_id))

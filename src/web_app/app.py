@@ -65,8 +65,8 @@ def create_app():
     return app
 
 
-def serve(app, port=None):
+def serve(app, port=None, host="0.0.0.0"):
     """Serve the FastHTML application."""
     if port is None:
         port = SERVER_PORT
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    uvicorn.run(app, host=host, port=port)
