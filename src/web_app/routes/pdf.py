@@ -540,9 +540,10 @@ def setup_routes(app, rt):
     def extract_text_llm_form(file_hash: str):
         """OCR form — one click runs the whole document.
 
-        The range inputs are pre-filled 1→N and tucked into a <details>, so the
-        common case (OCR everything) needs no field editing, while a partial run
-        is still one disclosure away.
+        The range inputs are pre-filled 1→N and always visible, so the common
+        case (OCR everything) needs no field editing while a partial run needs
+        no disclosure step either. The submit button relabels as the range is
+        edited, so it can never claim "All N pages" while the boxes say 3–7.
         """
         file_info = get_file_info(file_hash)
         if not file_info:
@@ -569,6 +570,19 @@ def setup_routes(app, rt):
             ),
             Form(
                 Div(
+                    Div(Label("Start Page"),
+                        Input(type="number", name="start_page",
+                              min="1", max=str(n),
+                              value="1", required=True,
+                              oninput=relabel_js)),
+                    Div(Label("End Page"),
+                        Input(type="number", name="end_page",
+                              min="1", max=str(n),
+                              value=str(n), required=True,
+                              oninput=relabel_js)),
+                    cls="form-row",
+                ),
+                Div(
                     Button(f"🤖 OCR All {n} Page{'' if n == 1 else 's'}",
                            type="submit", cls="ocr-submit",
                            style="background:var(--purple);"),
@@ -576,23 +590,6 @@ def setup_routes(app, rt):
                          id="ocr-indicator", cls="htmx-indicator"),
                     cls="action-row",
                     style="margin-top:0;",
-                ),
-                Details(
-                    Summary("Page range", cls="details-summary"),
-                    Div(
-                        Div(Label("Start Page"),
-                            Input(type="number", name="start_page",
-                                  min="1", max=str(n),
-                                  value="1", required=True,
-                                  oninput=relabel_js)),
-                        Div(Label("End Page"),
-                            Input(type="number", name="end_page",
-                                  min="1", max=str(n),
-                                  value=str(n), required=True,
-                                  oninput=relabel_js)),
-                        cls="form-row",
-                        style="margin-top:.6rem;margin-bottom:0;",
-                    ),
                 ),
                 hx_post=f"/process/extract-text-llm/{file_hash}",
                 hx_target="#operation-result",
