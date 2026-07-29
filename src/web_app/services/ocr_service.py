@@ -388,7 +388,8 @@ async def process_document_async(
     pdf_path: Path,
     start_page: int,
     end_page: int,
-    progress_callback: Optional[Callable[[str], None]] = None
+    progress_callback: Optional[Callable[[str], None]] = None,
+    page_progress: Optional[Callable[[int, int], None]] = None
 ) -> Dict:
     """
     Process a document with async chunked processing, native PDF handling, caching, and retries.
@@ -398,6 +399,9 @@ async def process_document_async(
         start_page: Starting page number (1-based)
         end_page: Ending page number (1-based)
         progress_callback: Optional callback for progress updates
+        page_progress: Optional callback fired as each page finishes, with
+            (pages_done, total_pages). Pages are dispatched concurrently, so this
+            reports completion count — not which page number is being worked on.
 
     Returns:
         Dictionary with processing results and statistics
@@ -432,11 +436,19 @@ async def process_document_async(
     semaphore = asyncio.Semaphore(OCR_CONCURRENT_REQUESTS)
     
     # Process all chunks initially
-    chunk_tasks = [
-        process_page_chunk(pdf_path, chunk, semaphore, pdf_filename)
-        for chunk in page_chunks
-    ]
-    
+    pages_done = 0
+
+    async def run_chunk(chunk):
+        nonlocal pages_done
+        try:
+            return await process_page_chunk(pdf_path, chunk, semaphore, pdf_filename)
+        finally:
+            pages_done += len(chunk)
+            if page_progress:
+                page_progress(pages_done, total_pages)
+
+    chunk_tasks = [run_chunk(chunk) for chunk in page_chunks]
+
     # Process initial chunks
     chunk_results_list = await asyncio.gather(*chunk_tasks, return_exceptions=True)
     

@@ -10,11 +10,12 @@ from fasthtml.common import *
 from starlette.responses import StreamingResponse
 from pdf_utils.config import UPLOAD_DIR, MIN_DPI, MAX_DPI, DEFAULT_DPI
 from web_app.core.database import get_file_info
+from web_app.core import tasks
 from web_app.core.utils import count_tokens
 from web_app.services import pdf_service
 from web_app.ui.components import (
     error_message, toc_display, image_extraction_gallery, ocr_result_display,
-    chapters_form_display, chapters_result_display,
+    chapters_form_display, chapters_result_display, task_progress_poll,
 )
 from web_app.services import ocr_service
 
@@ -31,10 +32,12 @@ def setup_routes(app, rt):
                 return Div(error_message("File not found."))
             
             file_path = UPLOAD_DIR / file_info.stored_filename
-            
-            # Extract TOC
+
+            # Chapter ranges come from the same TOC — computing them here lets
+            # each entry carry concrete page numbers for its OCR button.
             toc = pdf_service.extract_toc(file_path)
-            return toc_display(toc)
+            chapters = pdf_service.compute_chapter_ranges(toc, file_info.page_count)
+            return toc_display(toc, file_hash=file_hash, chapters=chapters)
             
         except Exception as e:
             return Div(error_message(f"Error extracting TOC: {str(e)}"))
@@ -343,11 +346,16 @@ def setup_routes(app, rt):
                       style="background:var(--green);"),
                     Button(
                         "📋 Copy",
+                        # Fetch from the download route — reading the preview's
+                        # textContent truncates on large extractions.
                         onclick=(
-                            f"const t=document.getElementById('{preview_id}').textContent;"
-                            f"navigator.clipboard.writeText(t).then(()=>{{"
-                            f"this.textContent='✅ Copied!';this.style.background='var(--green)';"
-                            f"setTimeout(()=>{{this.textContent='📋 Copy';this.style.background='';}},2000);}});"
+                            f"const btn=this;"
+                            f"fetch('{download_url}')"
+                            f".then(r=>r.text())"
+                            f".then(t=>navigator.clipboard.writeText(t))"
+                            f".then(()=>{{"
+                            f"btn.textContent='✅ Copied!';btn.style.background='var(--green)';"
+                            f"setTimeout(()=>{{btn.textContent='📋 Copy';btn.style.background='';}},2000);}});"
                         ),
                         cls="button",
                     ),
@@ -530,15 +538,33 @@ def setup_routes(app, rt):
     
     @rt('/extract-text-llm-form/{file_hash}')
     def extract_text_llm_form(file_hash: str):
-        """Show form for LLM-based text extraction with OCR."""
+        """OCR form — one click runs the whole document.
+
+        The range inputs are pre-filled 1→N and always visible, so the common
+        case (OCR everything) needs no field editing while a partial run needs
+        no disclosure step either. The submit button relabels as the range is
+        edited, so it can never claim "All N pages" while the boxes say 3–7.
+        """
         file_info = get_file_info(file_hash)
         if not file_info:
             return Div(error_message("File not found."))
-        
+
+        n = file_info.page_count
+        # Keeps the submit button honest when a custom range is typed.
+        relabel_js = (
+            "(function(f){"
+            "var s=+f.querySelector('[name=start_page]').value,"
+            "e=+f.querySelector('[name=end_page]').value,"
+            f"b=f.querySelector('.ocr-submit'),n={n};"
+            "b.textContent=(s===1&&e===n)?'🤖 OCR All '+n+' Page'+(n===1?'':'s')"
+            ":'🤖 OCR Pages '+s+'–'+e;"
+            "})(this.closest('form'))"
+        )
+
         return Div(
             H3("Extract Text — LLM OCR"),
             Div(
-                Span(f"{file_info.page_count} pages total", cls="pill"),
+                Span(f"{n} pages total", cls="pill"),
                 Span("AI · LaTeX · caching", cls="pill"),
                 cls="file-meta", style="margin-bottom:.75rem;",
             ),
@@ -546,20 +572,24 @@ def setup_routes(app, rt):
                 Div(
                     Div(Label("Start Page"),
                         Input(type="number", name="start_page",
-                              min="1", max=str(file_info.page_count),
-                              value="1", required=True)),
+                              min="1", max=str(n),
+                              value="1", required=True,
+                              oninput=relabel_js)),
                     Div(Label("End Page"),
                         Input(type="number", name="end_page",
-                              min="1", max=str(file_info.page_count),
-                              value=str(min(5, file_info.page_count)), required=True)),
+                              min="1", max=str(n),
+                              value=str(n), required=True,
+                              oninput=relabel_js)),
                     cls="form-row",
                 ),
                 Div(
-                    Button("Extract with OCR", type="submit",
+                    Button(f"🤖 OCR All {n} Page{'' if n == 1 else 's'}",
+                           type="submit", cls="ocr-submit",
                            style="background:var(--purple);"),
                     Span(Span(cls="spinner"), " Running OCR…",
                          id="ocr-indicator", cls="htmx-indicator"),
                     cls="action-row",
+                    style="margin-top:0;",
                 ),
                 hx_post=f"/process/extract-text-llm/{file_hash}",
                 hx_target="#operation-result",
@@ -567,65 +597,85 @@ def setup_routes(app, rt):
             ),
             cls="result-area"
         )
-    
+
     
     @rt('/process/extract-text-llm/{file_hash}')
     async def process_extract_text_llm(file_hash: str, start_page: int, end_page: int):
-        """Extract text using async LLM OCR with caching and batch processing."""
-        try:
-            file_info = get_file_info(file_hash)
-            if not file_info:
-                return Div(error_message("File not found."))
-            
-            file_path = UPLOAD_DIR / file_info.stored_filename
-            
-            # Validate page range
-            if start_page < 1 or end_page > file_info.page_count or start_page > end_page:
-                return Div(error_message("Invalid page range."))
-            
-            # Store progress messages
-            progress_messages = []
-            
-            def progress_callback(message: str):
-                progress_messages.append(message)
-                print(f"OCR Progress: {message}")
-            
-            # Process pages with async OCR
-            print(f"Starting async LLM OCR extraction for pages {start_page} to {end_page} from: {file_path}")
+        """Kick off whole-document OCR in the background, return a progress bar.
+
+        A 300-page OCR inside the POST is minutes of dead spinner and a proxy
+        timeout waiting to happen.
+        """
+        file_info = get_file_info(file_hash)
+        if not file_info:
+            return Div(error_message("File not found."))
+
+        file_path = UPLOAD_DIR / file_info.stored_filename
+
+        if start_page < 1 or end_page > file_info.page_count or start_page > end_page:
+            return Div(error_message("Invalid page range."))
+
+        total = end_page - start_page + 1
+
+        async def work(task_id: str):
+            def on_page(done: int, of: int):
+                # Cap at 95%: retries and the PyMuPDF fallback still follow.
+                tasks.set_progress(
+                    task_id,
+                    f"OCR — page {done} of {of}" if done < of else "Finishing up…",
+                    min(95, int(done / of * 95)) if of else 95,
+                )
+
+            print(f"Starting async LLM OCR for pages {start_page}-{end_page} of {file_path}")
             results = await ocr_service.process_pages_async_batch(
-                file_path, 
-                start_page, 
-                end_page,
-                progress_callback=progress_callback
+                file_path, start_page, end_page,
+                progress_callback=lambda m: print(f"OCR Progress: {m}"),
+                page_progress=on_page,
             )
-            
-            # Add progress messages to results for display
-            results["progress_messages"] = progress_messages
-            
-            # Save text to file for download
-            # Calculate cache hit rate for filename
+
+            # Cache hit rate is baked into the filename
             pages_processed = results.get('pages_processed', 0)
             cached_pages_count = len(results.get('cached_pages', []))
             cache_hit_rate = (cached_pages_count / pages_processed) * 100 if pages_processed > 0 else 0
             cache_info = f"_cache{cache_hit_rate:.0f}pct" if cache_hit_rate > 0 else ""
-            text_filename = f"mcp_{file_info.stored_filename.replace('.pdf', '')}_async_ocr_p{start_page}-{end_page}{cache_info}.txt"
-            text_path = UPLOAD_DIR / text_filename
-            text_path.write_text(results["full_text"], encoding='utf-8')
-            
-            # Return the formatted result display
+            text_filename = (f"mcp_{file_info.stored_filename.replace('.pdf', '')}"
+                             f"_async_ocr_p{start_page}-{end_page}{cache_info}.txt")
+            (UPLOAD_DIR / text_filename).write_text(results["full_text"], encoding='utf-8')
+            return results, text_filename
+
+        task_id = tasks.start_task(
+            work, phase=f"Starting OCR of {total} page{'' if total == 1 else 's'}…", pct=2
+        )
+        return task_progress_poll(
+            task_id, f"/ocr-status/{task_id}/{file_hash}/{start_page}/{end_page}",
+            f"Starting OCR of {total} page{'' if total == 1 else 's'}…", 2,
+        )
+
+    @rt('/ocr-status/{task_id}/{file_hash}/{start_page}/{end_page}')
+    def ocr_status(task_id: str, file_hash: str, start_page: int, end_page: int):
+        """Polled while a whole-document OCR runs."""
+        task = tasks.get_task(task_id)
+        if task is None:
+            return error_message("This OCR job expired – please run it again.")
+
+        if task["phase"] == "done":
+            results, text_filename = tasks.pop_task(task_id)["result"]
             return ocr_result_display(
                 results=results,
                 file_hash=file_hash,
                 start_page=start_page,
                 end_page=end_page,
-                text_filename=text_filename
+                text_filename=text_filename,
             )
-            
-        except Exception as e:
-            print(f"Error in async LLM OCR extraction: {str(e)}")
-            import traceback
-            traceback.print_exc()
-            return Div(error_message(f"Error extracting text with LLM: {str(e)}"))
+
+        if task["phase"] == "error":
+            err = tasks.pop_task(task_id).get("error", "Unknown error")
+            return error_message(f"Error extracting text with LLM: {err}")
+
+        return task_progress_poll(
+            task_id, f"/ocr-status/{task_id}/{file_hash}/{start_page}/{end_page}",
+            task["phase"], task["pct"],
+        )
 
 
     @rt('/extract-text-llm-image/{file_hash}')
@@ -722,15 +772,6 @@ def setup_routes(app, rt):
                 P(f"{method_icon} {method_text} · {processing_time:.1f}s",
                   cls="alert-success"),
 
-                # Metrics
-                Div(
-                    Div(P("⏱ Time",   cls="metric-label"), P(f"{processing_time:.1f}s",    cls="metric-value"), cls="metric-box"),
-                    Div(P("📊 Chars",  cls="metric-label"), P(f"{len(results['full_text']):,}", cls="metric-value"), cls="metric-box"),
-                    Div(P("🔤 In tok", cls="metric-label"), P(f"{results['total_input_tokens']:,}",  cls="metric-value"), cls="metric-box"),
-                    Div(P("🔤 Out tok",cls="metric-label"), P(f"{results['total_output_tokens']:,}", cls="metric-value"), cls="metric-box"),
-                    cls="metrics-row",
-                ),
-
                 # Action buttons
                 Div(
                     A("⬇ Download Text",
@@ -740,11 +781,16 @@ def setup_routes(app, rt):
                       style="background:var(--green);"),
                     Button(
                         "📋 Copy",
+                        # Fetch from the download route — reading the preview's
+                        # textContent truncates on large extractions.
                         onclick=(
-                            f"const t=document.getElementById('{preview_id}').textContent;"
-                            f"navigator.clipboard.writeText(t).then(()=>{{"
-                            f"this.textContent='✅ Copied!';this.style.background='var(--green)';"
-                            f"setTimeout(()=>{{this.textContent='📋 Copy';this.style.background='';}},2000);}});"
+                            f"const btn=this;"
+                            f"fetch('/{text_filename}')"
+                            f".then(r=>r.text())"
+                            f".then(t=>navigator.clipboard.writeText(t))"
+                            f".then(()=>{{"
+                            f"btn.textContent='✅ Copied!';btn.style.background='var(--green)';"
+                            f"setTimeout(()=>{{btn.textContent='📋 Copy';btn.style.background='';}},2000);}});"
                         ),
                         cls="button",
                     ),
@@ -753,6 +799,25 @@ def setup_routes(app, rt):
 
                 H4("Preview"),
                 Pre(results["full_text"], id=preview_id, cls="text-preview"),
+
+                # Telemetry sits below the text, folded away.
+                Details(
+                    Summary(
+                        f"Details — {processing_time:.1f}s · "
+                        f"{len(results['full_text']):,} chars · "
+                        f"{results['total_input_tokens']:,} tok in · "
+                        f"{results['total_output_tokens']:,} tok out"
+                        + (f" · {token_count:,} tok of text" if token_count else ""),
+                        cls="details-summary",
+                    ),
+                    Div(
+                        Div(P("⏱ Time",   cls="metric-label"), P(f"{processing_time:.1f}s",    cls="metric-value"), cls="metric-box"),
+                        Div(P("📊 Chars",  cls="metric-label"), P(f"{len(results['full_text']):,}", cls="metric-value"), cls="metric-box"),
+                        Div(P("🔤 In tok", cls="metric-label"), P(f"{results['total_input_tokens']:,}",  cls="metric-value"), cls="metric-box"),
+                        Div(P("🔤 Out tok",cls="metric-label"), P(f"{results['total_output_tokens']:,}", cls="metric-value"), cls="metric-box"),
+                        cls="metrics-row",
+                    ),
+                ),
 
                 cls="result-area"
             )
@@ -783,36 +848,56 @@ def setup_routes(app, rt):
 
     @rt('/process/download-chapters/{file_hash}')
     async def process_download_chapters(file_hash: str, request):
-        """OCR selected chapters and return a ZIP of .md files."""
-        try:
-            file_info = get_file_info(file_hash)
-            if not file_info:
-                return Div(error_message("File not found."))
+        """Start chapter OCR in the background, return a progress bar.
 
-            # Parse selected chapter indices from checkboxes
-            form_data = await request.form()
-            selected_indices = {int(v) for v in form_data.getlist("chapters")}
+        Chapters are OCR'd one after another — a whole book is minutes of work,
+        far past any sensible proxy read timeout.
+        """
+        file_info = get_file_info(file_hash)
+        if not file_info:
+            return Div(error_message("File not found."))
 
-            if not selected_indices:
-                return Div(error_message("No chapters selected."))
+        form_data = await request.form()
+        selected_indices = {int(v) for v in form_data.getlist("chapters")}
+        if not selected_indices:
+            return Div(error_message("No chapters selected."))
 
-            file_path = UPLOAD_DIR / file_info.stored_filename
-            toc = pdf_service.extract_toc(file_path)
-            all_chapters = pdf_service.compute_chapter_ranges(toc, file_info.page_count)
-            chapters = [ch for ch in all_chapters if ch["index"] in selected_indices]
+        file_path = UPLOAD_DIR / file_info.stored_filename
+        toc = pdf_service.extract_toc(file_path)
+        all_chapters = pdf_service.compute_chapter_ranges(toc, file_info.page_count)
+        chapters = [ch for ch in all_chapters if ch["index"] in selected_indices]
+        if not chapters:
+            return Div(error_message("No matching chapters found."))
 
-            if not chapters:
-                return Div(error_message("No matching chapters found."))
+        n_ch = len(chapters)
 
+        async def work(task_id: str):
             t0 = time.time()
             chapter_results = []
             zip_buf = io.BytesIO()
 
             with zipfile.ZipFile(zip_buf, 'w', zipfile.ZIP_DEFLATED) as zf:
-                for ch in chapters:
+                for i, ch in enumerate(chapters, start=1):
+                    ch_pages = ch["end_page"] - ch["start_page"] + 1
+                    base_pct = int((i - 1) / n_ch * 100)
+                    span_pct = 100 / n_ch
+
+                    def on_page(done: int, of: int, _i=i, _ch=ch, _b=base_pct, _s=span_pct):
+                        tasks.set_progress(
+                            task_id,
+                            f"Chapter {_i}/{n_ch} — {_ch['title']} (page {done}/{of})",
+                            min(99, int(_b + _s * done / of)) if of else _b,
+                        )
+
+                    tasks.set_progress(
+                        task_id,
+                        f"Chapter {i}/{n_ch} — {ch['title']} ({ch_pages} pages)",
+                        base_pct,
+                    )
                     try:
                         results = await ocr_service.process_pages_async_batch(
                             file_path, ch["start_page"], ch["end_page"],
+                            page_progress=on_page,
                         )
                         text = results.get("full_text", "")
                         # Sanitise title for filename
@@ -821,38 +906,55 @@ def setup_routes(app, rt):
                         fname = f'{ch["index"]:02d}_{safe}.md'
                         zf.writestr(fname, text)
 
-                        cached_count = len(results.get("cached_pages", []))
                         chapter_results.append({
                             "title": ch["title"],
                             "ok": True,
-                            "pages": ch["end_page"] - ch["start_page"] + 1,
+                            "pages": ch_pages,
                             "input_tokens": results.get("total_input_tokens", 0),
                             "output_tokens": results.get("total_output_tokens", 0),
-                            "cached_count": cached_count,
+                            "cached_count": len(results.get("cached_pages", [])),
                         })
                     except Exception as exc:
                         print(f"Chapter OCR failed: {ch['title']}: {exc}")
                         chapter_results.append({
                             "title": ch["title"],
                             "ok": False,
-                            "pages": ch["end_page"] - ch["start_page"] + 1,
+                            "pages": ch_pages,
                             "input_tokens": 0,
                             "output_tokens": 0,
                             "cached_count": 0,
                         })
 
-            total_time = time.time() - t0
+            tasks.set_progress(task_id, "Packing ZIP…", 99)
 
-            # Save ZIP to uploads dir
             stem = file_info.stored_filename.rsplit('.', 1)[0]
             zip_filename = f"chapters_{stem}.zip"
-            zip_path = UPLOAD_DIR / zip_filename
-            zip_path.write_bytes(zip_buf.getvalue())
+            (UPLOAD_DIR / zip_filename).write_bytes(zip_buf.getvalue())
 
+            return chapter_results, zip_filename, time.time() - t0
+
+        task_id = tasks.start_task(
+            work, phase=f"Starting {n_ch} chapter{'' if n_ch == 1 else 's'}…", pct=1
+        )
+        return task_progress_poll(
+            task_id, f"/chapters-status/{task_id}",
+            f"Starting {n_ch} chapter{'' if n_ch == 1 else 's'}…", 1,
+        )
+
+    @rt('/chapters-status/{task_id}')
+    def chapters_status(task_id: str):
+        """Polled while chapter OCR runs."""
+        task = tasks.get_task(task_id)
+        if task is None:
+            return error_message("This chapters job expired – please run it again.")
+
+        if task["phase"] == "done":
+            chapter_results, zip_filename, total_time = tasks.pop_task(task_id)["result"]
             return chapters_result_display(chapter_results, zip_filename, total_time)
 
-        except Exception as e:
-            print(f"Error in chapter download: {str(e)}")
-            import traceback
-            traceback.print_exc()
-            return Div(error_message(f"Error processing chapters: {str(e)}"))
+        if task["phase"] == "error":
+            err = tasks.pop_task(task_id).get("error", "Unknown error")
+            return error_message(f"Error processing chapters: {err}")
+
+        return task_progress_poll(task_id, f"/chapters-status/{task_id}",
+                                  task["phase"], task["pct"])

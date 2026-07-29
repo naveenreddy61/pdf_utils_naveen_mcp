@@ -94,13 +94,23 @@ main > h1, main.container > h1 {
   gap: 0.5rem;
   transition: border-color var(--t), background var(--t);
 }
-.upload-zone:hover {
+.upload-zone:hover,
+.upload-zone-drag {
   border-color: var(--primary);
   background: var(--primary-light);
 }
+/* Children must not eat the drop's dragleave/drop events. */
+.upload-zone-drag * { pointer-events: none; }
 
 .upload-icon { font-size: 2.25rem; line-height: 1; }
 .upload-hint { font-size: 0.8rem; color: var(--text-muted); }
+.upload-error {
+  display: none;
+  margin-top: 0.5rem;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--red);
+}
 
 /* Styled label – acts as the "Choose File" button, perfectly centerable */
 .file-label-btn {
@@ -294,6 +304,20 @@ tbody tr:hover { background: var(--surface-alt); }
 .toc-item:last-child { border-bottom: none; }
 .toc-title { flex: 1; }
 .toc-page  { color: var(--text-muted); font-size: 0.78rem; white-space: nowrap; }
+/* Per-chapter OCR shortcut — subtle so the TOC stays readable as a list. */
+.toc-ocr-btn {
+  padding: 0.1rem 0.45rem;
+  font-size: 0.7rem;
+  font-weight: 500;
+  background: transparent;
+  color: var(--purple);
+  border: 1px solid #c4b5fd;
+  border-radius: 999px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.toc-ocr-btn:hover { background: var(--purple-light); color: var(--purple); }
+
 .toc-l0    { font-weight: 700; }
 .toc-l1    { padding-left: 1rem; }
 .toc-l2    { padding-left: 2rem; }
@@ -416,6 +440,20 @@ label { font-size: 0.875rem; font-weight: 500; color: var(--text); margin-bottom
 h3 { font-size: 1rem;   font-weight: 700; margin-bottom: 0.75rem; }
 h4 { font-size: 0.8rem; font-weight: 600; margin-bottom: 0.5rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; }
 
+/* ── Collapsed detail sections (<details>) ────────────────── */
+details { margin: 0.5rem 0; }
+.details-summary {
+  cursor: pointer;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  font-weight: 500;
+  padding: 0.3rem 0;
+  list-style: revert;   /* keep the native disclosure triangle */
+  user-select: none;
+}
+.details-summary:hover { color: var(--text); }
+details[open] > .details-summary { margin-bottom: 0.25rem; }
+
 /* ── Page-detail list (OCR) ───────────────────────────────── */
 .page-detail-list { list-style: none; padding: 0; max-height: 200px; overflow-y: auto; }
 .page-detail-list li { padding: 0.2rem 0; font-size: 0.85rem; }
@@ -482,6 +520,35 @@ h4 { font-size: 0.8rem; font-weight: 600; margin-bottom: 0.5rem; color: var(--te
   width: auto;
   accent-color: var(--primary);
 }
+
+/* ── URL action buttons (two modes, one input) ────────────── */
+.url-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+  margin-bottom: 0.625rem;
+}
+@media (max-width: 460px) { .url-actions { grid-template-columns: 1fr; } }
+
+/* ── Camera capture link row ──────────────────────────────── */
+.capture-link {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+  padding: 0.7rem 1rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  color: var(--text);
+  font-size: 0.875rem;
+  text-decoration: none;
+}
+.capture-link:hover { border-color: var(--primary); background: var(--primary-light); }
+.capture-link-icon { font-size: 1rem; flex-shrink: 0; }
+.capture-link-sub { font-size: 0.8rem; color: var(--text-muted); }
+@media (max-width: 520px) { .capture-link-sub { display: none; } }
 
 /* ── URL result header ────────────────────────────────────── */
 .url-result-header { margin-bottom: 0.875rem; }

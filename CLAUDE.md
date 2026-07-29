@@ -33,7 +33,37 @@ The project includes a FastHTML web application (`src/web_app/`) for browser-bas
   - `ocr_service.py`: GenAI OCR with caching, retries, and fallback
   - `url_service.py`: URL-to-Markdown via trafilatura
   - `url_pdf_service.py`: URL-to-PDF-OCR via headless Chromium + OCR
+- **Background tasks**: `src/web_app/core/tasks.py` - in-process store for jobs
+  that outlive one HTTP request (see below)
 - **Styles**: `src/web_app/ui/styles.py` - CSS styles
+
+### Long-running operations (`core/tasks.py`)
+
+Whole-document OCR and chapter OCR run for minutes — too long for a single POST
+(dead spinner, proxy read timeout). Both follow the same shape:
+
+1. The POST validates, calls `tasks.start_task(work)` and returns
+   `task_progress_poll(task_id, status_url, label, pct)` immediately.
+2. `work(task_id)` runs in the background and calls `tasks.set_progress(...)`;
+   its return value is stored as the task result.
+3. A status route (`/ocr-status/...`, `/chapters-status/...`) is polled every
+   750 ms and returns either a fresh progress bar or the final result fragment.
+   The final swap carries no polling attributes, so the loop ends itself.
+
+Page-level granularity comes from `process_document_async(..., page_progress=cb)`,
+where `cb(done, total)` fires as each page completes. Pages are dispatched
+concurrently, so this is a completion count, not a page walk-through.
+
+The store is per-process and in-memory — a restart loses in-flight jobs, which
+is fine because the work is re-runnable and the OCR cache makes a rerun cheap.
+
+### Operation form / result split
+
+`operation_buttons()` renders two slots: ops-grid buttons load forms into
+`#operation-form`, and those forms submit into `#operation-result` below. This
+keeps a form on screen after it runs, so a page range can be tweaked and
+resubmitted without re-opening it. A bubbling `hx-on::before-request` handler on
+the grid clears `#operation-result` when a different operation is selected.
 
 ### Running the Web App:
 ```bash
@@ -50,6 +80,11 @@ Key commands:
 ### Important Patterns:
 - Use HTMX for page updates (`hx_post`, `hx_get`, `hx_target`)
 - Use JavaScript `window.location.href` for file downloads (NOT HTMX)
+- htmx **cancels the native submit** for a `<button>` inside a `<form>`, which
+  also suppresses the browser's validation bubble. A button carrying its own
+  `hx-post` must call `this.form.reportValidity()` in `onclick` and
+  `event.stopImmediatePropagation()` on failure (see `url_input_form()`), or
+  `required` / `type="url"` silently do nothing.
 - For server-saved files: `window.location.href='/download/route/filename'`
 - For clipboard copy of large content: `fetch('/download/route/filename').then(r=>r.text()).then(t=>navigator.clipboard.writeText(t))`
   (do NOT read from DOM `.textContent` — browser clipboard API has size limits)

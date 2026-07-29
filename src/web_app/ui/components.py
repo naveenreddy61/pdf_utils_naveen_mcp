@@ -1,42 +1,125 @@
 """UI components for the web application."""
 
+import json
+
 from fasthtml.common import *
 from pdf_utils.config import MAX_FILE_SIZE_MB, CAPTURE_JPEG_QUALITY
 
 
 # ── Upload ──────────────────────────────────────────────────────────────────
 
-def upload_form():
-    """Upload zone with a styled label button over a hidden file input.
+# Extensions the server accepts. Shared by the file input's `accept` attribute
+# and the client-side pre-check, so a drop of the wrong type fails instantly
+# instead of after a round trip.
+UPLOAD_EXTENSIONS = [
+    ".pdf", ".epub", ".jpg", ".jpeg", ".png", ".webp", ".ppt", ".pptx", ".md",
+]
 
-    Clicking the label opens the OS file dialog (standard label behaviour).
-    HTMX listens for `change` on the hidden input and posts as multipart/form-data.
-    The label is a plain inline-block so flexbox centers it perfectly under the icon.
+_UPLOAD_JS = """
+(function () {
+  var zone  = document.getElementById('upload-zone');
+  var input = document.getElementById('upload-input');
+  var err   = document.getElementById('upload-error');
+  if (!zone || !input) return;
+  var ACCEPT = __ACCEPT__;
+
+  function fail(msg) { err.textContent = msg; err.style.display = 'block'; }
+  function clearErr() { err.textContent = ''; err.style.display = 'none'; }
+
+  function accepted(file) {
+    var name = (file.name || '').toLowerCase();
+    var dot  = name.lastIndexOf('.');
+    var ext  = dot === -1 ? '' : name.slice(dot);
+    if (ACCEPT.indexOf(ext) !== -1) return true;
+    fail((ext ? ext + ' files are' : 'That file is') + ' not supported. Accepted: '
+         + ACCEPT.join(' '));
+    return false;
+  }
+
+  // Hand the file to the existing hidden input so the HTMX change-trigger
+  // upload fires unchanged — the same DataTransfer trick the capture page uses.
+  function send(file) {
+    if (!file || !accepted(file)) return;
+    clearErr();
+    var dt = new DataTransfer();
+    dt.items.add(file);
+    input.files = dt.files;
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+
+  // Whole card opens the dialog. The guard stops the programmatic input.click()
+  // from bubbling back into this handler.
+  zone.addEventListener('click', function (e) {
+    if (e.target.closest('#upload-input, .file-label-btn')) return;
+    input.click();
+  });
+
+  ['dragenter', 'dragover'].forEach(function (ev) {
+    zone.addEventListener(ev, function (e) {
+      e.preventDefault(); e.stopPropagation();
+      zone.classList.add('upload-zone-drag');
+    });
+  });
+  zone.addEventListener('dragleave', function (e) {
+    // Moving over a child fires dragleave on the parent — ignore those.
+    if (zone.contains(e.relatedTarget)) return;
+    zone.classList.remove('upload-zone-drag');
+  });
+  zone.addEventListener('drop', function (e) {
+    e.preventDefault(); e.stopPropagation();
+    zone.classList.remove('upload-zone-drag');
+    send(e.dataTransfer && e.dataTransfer.files[0]);
+  });
+
+  // Without this, a file dropped just outside the zone navigates the tab to it.
+  ['dragover', 'drop'].forEach(function (ev) {
+    window.addEventListener(ev, function (e) {
+      if (!zone.contains(e.target)) e.preventDefault();
+    });
+  });
+
+  document.addEventListener('paste', function (e) {
+    var f = e.clipboardData && e.clipboardData.files && e.clipboardData.files[0];
+    if (f) { e.preventDefault(); send(f); }
+  });
+})();
+"""
+
+
+def upload_form():
+    """Upload zone: click anywhere, drop a file on it, or paste one.
+
+    HTMX listens for `change` on the hidden file input and posts as
+    multipart/form-data; drag-drop and paste both route through that same input
+    so there is exactly one upload path.
     """
     return Div(
         Form(
             # ── Upload card ───────────────────────────────────────────────
             Div(
                 P("📁", cls="upload-icon"),
-                # Styled label acts as the visible "Choose File" button
-                Label(
-                    "Choose File",
-                    Input(
-                        type="file",
-                        name="file",
-                        accept=".pdf,.epub,.jpg,.jpeg,.png,.webp,.ppt,.pptx,.md",
-                        style="display:none",
-                        hx_post="/upload",
-                        hx_encoding="multipart/form-data",
-                        hx_trigger="change",
-                        hx_target="#upload-result",
-                        hx_swap="innerHTML",
-                        hx_indicator="#upload-indicator",
-                    ),
-                    cls="file-label-btn",
+                Input(
+                    type="file",
+                    name="file",
+                    id="upload-input",
+                    accept=",".join(UPLOAD_EXTENSIONS),
+                    style="display:none",
+                    hx_post="/upload",
+                    hx_encoding="multipart/form-data",
+                    hx_trigger="change",
+                    hx_target="#upload-result",
+                    hx_swap="innerHTML",
+                    hx_indicator="#upload-indicator",
                 ),
+                # Styled label acts as the visible "Choose File" button
+                Label("Choose File", cls="file-label-btn",
+                      **{"for": "upload-input"}),
+                P("or drop a file here · or paste one",
+                  cls="upload-hint"),
                 P(f"PDF · EPUB · PPT · MD · JPG · PNG · WEBP  ·  max {MAX_FILE_SIZE_MB} MB",
                   cls="upload-hint"),
+                P("", id="upload-error", cls="upload-error"),
+                id="upload-zone",
                 cls="upload-zone",
             ),
             # ── In-flight indicator (shown by HTMX during HTTP POST) ──────
@@ -47,6 +130,7 @@ def upload_form():
             ),
         ),
         Div(id="upload-result"),
+        Script(_UPLOAD_JS.replace("__ACCEPT__", json.dumps(UPLOAD_EXTENSIONS))),
         cls="upload-section",
     )
 
@@ -84,6 +168,23 @@ def auto_download_script(stored_filename: str, download_as: str):
         f"a.download='{download_as}';"
         "document.body.appendChild(a);a.click();a.remove();"
         "})();"
+    )
+
+
+def task_progress_poll(task_id: str, status_url: str, label: str,
+                       pct: int = 0, interval: str = "750ms"):
+    """Self-replacing progress container for a background job.
+
+    Polls slower than the upload flow's 250 ms: these jobs run for minutes, and
+    the final swap carries no polling attributes so the loop ends on its own.
+    """
+    return Div(
+        _progress_bar(label, pct),
+        id=f"poll-{task_id}",
+        hx_get=status_url,
+        hx_trigger=f"every {interval}",
+        hx_target="this",
+        hx_swap="outerHTML",
     )
 
 
@@ -158,75 +259,76 @@ def file_info_display(file_info, is_existing=False):
 # ── Operation buttons ────────────────────────────────────────────────────────
 
 def operation_buttons(file_hash, file_type="pdf"):
-    """Responsive CSS-grid of operation buttons with icon + label."""
+    """Responsive CSS-grid of operation buttons with icon + label.
+
+    Ops-grid buttons load into `#operation-form`; the forms they load submit
+    into `#operation-result` below. That way a form survives its own result —
+    changing a page range and rerunning no longer means re-opening the form.
+    """
     if file_type == "image":
-        return Div(
-            H3("Operations"),
-            Div(
-                _op_btn("🤖", "OCR",
-                        hx_get=f"/extract-text-llm-image/{file_hash}",
-                        hx_target="#operation-result",
-                        extra_cls="purple"),
-                cls="ops-grid",
-            ),
-            Div(id="operation-result"),
-        )
-
-    if file_type == "epub":
-        return Div(
-            H3("Operations"),
-            Div(
-                _op_btn("ℹ️", "Metadata",
-                        hx_get=f"/epub-metadata/{file_hash}",
-                        hx_target="#operation-result"),
-                _op_btn("📑", "TOC",
-                        hx_post=f"/process/epub-toc/{file_hash}",
-                        hx_target="#operation-result"),
-                _op_btn("📝", "Text",
-                        hx_get=f"/epub-text-form/{file_hash}",
-                        hx_target="#operation-result"),
-                _op_btn("🎨", "Images",
-                        hx_get=f"/epub-images-form/{file_hash}",
-                        hx_target="#operation-result",
-                        extra_cls="green"),
-                _op_btn("📚", "Chapters",
-                        hx_get=f"/epub-chapters-form/{file_hash}",
-                        hx_target="#operation-result",
-                        extra_cls="orange"),
-                cls="ops-grid",
-            ),
-            Div(id="operation-result"),
-        )
-
-    return Div(
-        H3("Operations"),
-        Div(
+        ops = [
+            _op_btn("🤖", "OCR",
+                    hx_get=f"/extract-text-llm-image/{file_hash}",
+                    hx_target="#operation-form",
+                    extra_cls="purple"),
+        ]
+    elif file_type == "epub":
+        ops = [
+            _op_btn("ℹ️", "Metadata",
+                    hx_get=f"/epub-metadata/{file_hash}",
+                    hx_target="#operation-form"),
+            _op_btn("📑", "TOC",
+                    hx_post=f"/process/epub-toc/{file_hash}",
+                    hx_target="#operation-form"),
+            _op_btn("📝", "Text",
+                    hx_get=f"/epub-text-form/{file_hash}",
+                    hx_target="#operation-form"),
+            _op_btn("🎨", "Images",
+                    hx_get=f"/epub-images-form/{file_hash}",
+                    hx_target="#operation-form",
+                    extra_cls="green"),
+            _op_btn("📚", "Chapters",
+                    hx_get=f"/epub-chapters-form/{file_hash}",
+                    hx_target="#operation-form",
+                    extra_cls="orange"),
+        ]
+    else:
+        ops = [
             _op_btn("🤖", "OCR",
                     hx_get=f"/extract-text-llm-form/{file_hash}",
-                    hx_target="#operation-result",
+                    hx_target="#operation-form",
                     extra_cls="purple"),
             _op_btn("📑", "TOC",
                     hx_post=f"/process/toc/{file_hash}",
-                    hx_target="#operation-result"),
+                    hx_target="#operation-form"),
             _op_btn("✂️", "Extract Pages",
                     hx_get=f"/extract-pages-form/{file_hash}",
-                    hx_target="#operation-result"),
+                    hx_target="#operation-form"),
             _op_btn("🖼", "To Images",
                     hx_get=f"/convert-images-form/{file_hash}",
-                    hx_target="#operation-result"),
+                    hx_target="#operation-form"),
             _op_btn("📝", "Text",
                     hx_get=f"/extract-text-form/{file_hash}",
-                    hx_target="#operation-result"),
+                    hx_target="#operation-form"),
             _op_btn("🎨", "Images",
                     hx_get=f"/extract-images-form/{file_hash}",
-                    hx_target="#operation-result",
+                    hx_target="#operation-form",
                     extra_cls="green"),
             _op_btn("📚", "Chapters",
                     hx_get=f"/download-chapters-form/{file_hash}",
-                    hx_target="#operation-result",
+                    hx_target="#operation-form",
                     extra_cls="orange"),
-            cls="ops-grid",
-        ),
+        ]
+
+    return Div(
+        H3("Operations"),
+        # Switching operations drops the previous operation's result, so a stale
+        # result never sits under an unrelated form. htmx events bubble, so one
+        # handler on the grid covers every button in it.
+        Div(*ops, cls="ops-grid",
+            **{"hx-on::before-request":
+               "document.getElementById('operation-result').innerHTML=''"}),
+        Div(id="operation-form"),
         Div(id="operation-result"),
     )
 
@@ -245,7 +347,19 @@ def _op_btn(icon: str, label: str, extra_cls: str = "", **htmx_attrs):
 # ── URL to Markdown ──────────────────────────────────────────────────────────
 
 def url_input_form():
-    """URL input section — card below the file upload."""
+    """One URL input, two ways to extract it.
+
+    Both buttons post the same form to different routes via button-level
+    `hx-post`, so the method is chosen *after* pasting rather than before.
+    htmx cancels the native submit for buttons inside a form, which also
+    suppresses the browser's validation bubble — the onclick guard calls
+    reportValidity() itself and stops htmx's own handler when it fails.
+    """
+    validate_guard = (
+        "if(!this.form.reportValidity()){"
+        "event.preventDefault();event.stopImmediatePropagation();}"
+    )
+
     return Div(
         # ── divider ──────────────────────────────────────────────────────
         Div(
@@ -254,13 +368,14 @@ def url_input_form():
             Div(cls="or-line"),
             cls="or-divider",
         ),
-        # ── URL to Markdown card ──────────────────────────────────────────
         Div(
             Div(
                 Span("🔗", cls="url-section-icon"),
                 Div(
-                    P("URL to Markdown", cls="url-section-title"),
-                    P("Paste any article, blog post, or docs page",
+                    P("Extract from URL", cls="url-section-title"),
+                    P("Markdown — trafilatura, fast, clean for articles. "
+                      "Browser + OCR — renders in headless Chrome, then AI OCR; "
+                      "handles JS, cookie banners & pop-ups.",
                       cls="url-section-sub"),
                     cls="url-section-text",
                 ),
@@ -268,16 +383,37 @@ def url_input_form():
             ),
             Form(
                 Input(
-                    type="text",
+                    type="url",
                     name="url",
                     placeholder="https://example.com/article",
                     autocomplete="off",
+                    required=True,
                     style="margin-bottom:0.5rem;",
                 ),
-                Button(
-                    "Convert to Markdown",
-                    type="submit",
-                    style="width:100%;justify-content:center;margin-bottom:0.625rem;",
+                Div(
+                    Button(
+                        "⚡ Markdown — fast",
+                        type="submit",
+                        onclick=validate_guard,
+                        hx_post="/process/url-to-markdown",
+                        hx_include="closest form",
+                        hx_target="#url-result",
+                        hx_swap="innerHTML",
+                        hx_indicator="#url-indicator",
+                        style="justify-content:center;",
+                    ),
+                    Button(
+                        "🖨️ Browser + OCR — thorough",
+                        type="submit",
+                        onclick=validate_guard,
+                        hx_post="/process/url-to-pdf-ocr",
+                        hx_include="closest form",
+                        hx_target="#url-result",
+                        hx_swap="innerHTML",
+                        hx_indicator="#url-pdf-indicator",
+                        style="justify-content:center;background:var(--purple);",
+                    ),
+                    cls="url-actions",
                 ),
                 Div(
                     Label(
@@ -292,6 +428,8 @@ def url_input_form():
                         Input(type="checkbox", name="include_images", value="on"),
                         " Images",
                     ),
+                    Span("(Markdown mode only)",
+                         style="font-size:0.75rem;color:var(--text-muted);"),
                     Div(
                         Span(cls="spinner"),
                         Span("Fetching…"),
@@ -299,42 +437,6 @@ def url_input_form():
                         cls="htmx-indicator",
                         style="color:var(--primary);font-size:0.8rem;font-weight:500;gap:0.35rem;",
                     ),
-                    cls="url-options",
-                ),
-                hx_post="/process/url-to-markdown",
-                hx_target="#url-result",
-                hx_swap="innerHTML",
-                hx_indicator="#url-indicator",
-            ),
-            cls="url-card",
-        ),
-        Div(id="url-result"),
-        # ── URL to PDF OCR card ───────────────────────────────────────────
-        Div(
-            Div(
-                Span("🖨️", cls="url-section-icon"),
-                Div(
-                    P("URL via Browser + OCR", cls="url-section-title"),
-                    P("Renders page in headless Chrome, prints to PDF, then runs AI OCR — handles JS, cookie banners & pop-ups",
-                      cls="url-section-sub"),
-                    cls="url-section-text",
-                ),
-                cls="url-section-header",
-            ),
-            Form(
-                Input(
-                    type="text",
-                    name="url",
-                    placeholder="https://example.com/article",
-                    autocomplete="off",
-                    style="margin-bottom:0.5rem;",
-                ),
-                Button(
-                    "Convert via Browser (OCR)",
-                    type="submit",
-                    style="width:100%;justify-content:center;margin-bottom:0.625rem;background:var(--purple);",
-                ),
-                Div(
                     Div(
                         Span(cls="spinner"),
                         Span("Rendering page…"),
@@ -344,15 +446,10 @@ def url_input_form():
                     ),
                     cls="url-options",
                 ),
-                hx_post="/process/url-to-pdf-ocr",
-                hx_target="#url-pdf-result",
-                hx_swap="innerHTML",
-                hx_indicator="#url-pdf-indicator",
             ),
             cls="url-card",
-            style="margin-top:0.75rem;",
         ),
-        Div(id="url-pdf-result"),
+        Div(id="url-result"),
     )
 
 
@@ -437,7 +534,7 @@ def url_pdf_ocr_result_display(result, txt_filename: str, file_content: str):
             P(result.url, cls="url-result-source"),
             cls="url-result-header",
         ),
-        # ── quality badge ────────────────────────────────────────────────
+        # ── quality badge (stays visible — it qualifies the text below) ──
         Div(
             Span(
                 f"{q_icon} Capture quality: {q}",
@@ -447,45 +544,8 @@ def url_pdf_ocr_result_display(result, txt_filename: str, file_content: str):
                     f"color:{q_color};background:{q_bg};"
                 ),
             ),
-            P(result.quality_reason,
-              style="font-size:0.78rem;color:var(--text-muted);margin-top:0.3rem;"),
             style="margin-bottom:0.75rem;",
         ),
-        # ── metrics ──────────────────────────────────────────────────────
-        Div(
-            Div(
-                P("Pages", cls="metric-label"),
-                P(str(result.page_count), cls="metric-value"),
-                cls="metric-box",
-            ),
-            Div(
-                P("Characters", cls="metric-label"),
-                P(f"{result.char_count:,}", cls="metric-value"),
-                cls="metric-box",
-            ),
-            Div(
-                P("Words", cls="metric-label"),
-                P(f"{result.word_count:,}", cls="metric-value"),
-                cls="metric-box",
-            ),
-            Div(
-                P("Time", cls="metric-label"),
-                P(f"{result.processing_time:.1f}s", cls="metric-value"),
-                cls="metric-box",
-            ),
-            cls="metrics-row",
-            style="margin-bottom:0.5rem;",
-        ),
-        # ── token metrics ─────────────────────────────────────────────────
-        Div(
-            Span(
-                f"Tokens in: {result.total_input_tokens:,} · out: {result.total_output_tokens:,}"
-                + (f" · saved: {result.tokens_saved:,}" if result.tokens_saved else "")
-                + (f" · cached pages: {result.cached_pages}" if result.cached_pages else ""),
-                style="font-size:0.75rem;color:var(--text-muted);",
-            ),
-            style="margin-bottom:0.875rem;",
-        ) if result.total_input_tokens else Div(),
         # ── actions ──────────────────────────────────────────────────────
         Div(
             A(
@@ -508,18 +568,66 @@ def url_pdf_ocr_result_display(result, txt_filename: str, file_content: str):
                 ),
                 cls="button",
             ),
+            Span(f"{result.char_count:,} characters", cls="pill",
+                 style="align-self:center;"),
             cls="action-row",
         ),
         # ── preview ───────────────────────────────────────────────────────
         H4("Preview"),
         Pre(file_content, id=preview_id, cls="text-preview"),
+        # ── diagnostics, on demand ───────────────────────────────────────
+        Details(
+            Summary(
+                f"Details — {result.page_count} pages · {result.word_count:,} words"
+                f" · {result.processing_time:.1f}s",
+                cls="details-summary",
+            ),
+            P(result.quality_reason,
+              style="font-size:0.78rem;color:var(--text-muted);margin-bottom:0.5rem;"),
+            Div(
+                Div(
+                    P("Pages", cls="metric-label"),
+                    P(str(result.page_count), cls="metric-value"),
+                    cls="metric-box",
+                ),
+                Div(
+                    P("Characters", cls="metric-label"),
+                    P(f"{result.char_count:,}", cls="metric-value"),
+                    cls="metric-box",
+                ),
+                Div(
+                    P("Words", cls="metric-label"),
+                    P(f"{result.word_count:,}", cls="metric-value"),
+                    cls="metric-box",
+                ),
+                Div(
+                    P("Time", cls="metric-label"),
+                    P(f"{result.processing_time:.1f}s", cls="metric-value"),
+                    cls="metric-box",
+                ),
+                cls="metrics-row",
+                style="margin-bottom:0.5rem;",
+            ),
+            *([Span(
+                f"Tokens in: {result.total_input_tokens:,} · out: {result.total_output_tokens:,}"
+                + (f" · saved: {result.tokens_saved:,}" if result.tokens_saved else "")
+                + (f" · cached pages: {result.cached_pages}" if result.cached_pages else ""),
+                style="font-size:0.75rem;color:var(--text-muted);",
+            )] if result.total_input_tokens else []),
+        ),
         cls="result-area",
     )
 
 
 # ── TOC ──────────────────────────────────────────────────────────────────────
 
-def toc_display(toc):
+def toc_display(toc, file_hash: str = None, chapters=None):
+    """Table of contents, with the two things you usually want next.
+
+    `chapters` are the page ranges `compute_chapter_ranges` derives from this
+    same TOC — passing them in lets each top-level entry carry a concrete
+    "OCR pp. 12–34" button instead of the user re-deriving the range by hand.
+    """
     if not toc:
         return Div(
             H3("Table of Contents"),
@@ -527,13 +635,25 @@ def toc_display(toc):
             cls="result-area",
         )
 
+    # Top-level entries are matched to their chapter range by title + page.
+    ranges = {(c["title"], c["start_page"]): c for c in (chapters or [])}
+
     items = []
     for level, title, page in toc:
         level_cls = f"toc-l{min(level, 3)}"
         bold = "font-weight:700;" if level == 0 else ""
+        ch = ranges.get((title, page)) if file_hash else None
         items.append(
             Li(
                 Span(title, cls="toc-title"),
+                *([Button(
+                    f'OCR pp. {ch["start_page"]}–{ch["end_page"]}',
+                    cls="toc-ocr-btn",
+                    hx_post=f"/process/extract-text-llm/{file_hash}",
+                    hx_vals=f'{{"start_page": {ch["start_page"]}, '
+                            f'"end_page": {ch["end_page"]}}}',
+                    hx_target="#operation-result",
+                )] if ch else []),
                 Span(f"p. {page}", cls="toc-page"),
                 cls=f"toc-item {level_cls}",
                 style=bold,
@@ -542,6 +662,16 @@ def toc_display(toc):
 
     return Div(
         H3("Table of Contents"),
+        *([Div(
+            Button(
+                "📚 Download as chapters",
+                hx_get=f"/download-chapters-form/{file_hash}",
+                hx_target="#operation-form",
+                style="background:var(--orange);",
+            ),
+            cls="action-row",
+            style="margin-top:0;",
+        )] if file_hash else []),
         Ul(*items, cls="toc-list"),
         cls="result-area",
     )
@@ -808,45 +938,28 @@ def ocr_result_display(results, file_hash, start_page, end_page, text_filename):
         for p in fallback_pages:
             page_items.append(Li(f"📄 Page {p}: PyMuPDF",       style="color:#ea580c"))
 
-    # ── progress messages ──────────────────────────────────────────────────
-    prog_section = []
-    if results.get("progress_messages"):
-        prog_section = [Div(
-            H4("Processing log"),
-            Ul(*[Li(m, style="font-size:0.85rem;color:var(--text-muted);padding:0.15rem 0;")
-                 for m in results["progress_messages"]],
-               style="list-style:none;padding:0;"),
-            style="background:var(--surface-alt);border:1px solid var(--border);border-radius:var(--radius);padding:0.75rem;margin-bottom:0.75rem;",
-        )]
+    # One-line summary of everything hidden behind the disclosure.
+    summary_bits = [f"{proc_time:.1f}s", f"{cache_rate:.0f}% cached"]
+    if in_tok or out_tok:
+        summary_bits.append(f"{in_tok:,} tok in")
+        summary_bits.append(f"{out_tok:,} tok out")
+    details_summary = "Details — " + " · ".join(summary_bits)
+
+    failed = results.get("failed_pages", [])
 
     return Div(
         P(results.get("summary", "OCR complete"),
           cls="alert-success"),
 
-        metrics,
+        # Failures stay outside the collapse — a silently hidden failure is worse
+        # than the telemetry noise this section exists to bury.
+        *([P(f"⚠ {len(failed)} page(s) failed: "
+             + ", ".join(str(p) for p in failed[:20])
+             + ("…" if len(failed) > 20 else ""),
+            cls="alert-warning")]
+          if failed else []),
 
-        *prog_section,
-
-        # page-by-page
-        Div(
-            H4("Per-page detail"),
-            Ul(*page_items, cls="page-detail-list"),
-            style="background:var(--surface-alt);border:1px solid var(--border);border-radius:var(--radius);padding:0.75rem;margin-bottom:0.75rem;",
-        ),
-
-        # char count / failures
-        Div(
-            Span(f"{len(results['full_text']):,} characters",
-                 cls="pill"),
-            *([Span(f"⚠ {len(results.get('failed_pages',[]))} page(s) failed",
-                    cls="pill",
-                    style="border-color:var(--red);color:var(--red);")]
-              if results.get("failed_pages") else []),
-            cls="file-meta",
-            style="margin-bottom:0.75rem;",
-        ),
-
-        # action buttons
+        # ── what the user actually came for ────────────────────────────────
         Div(
             A("⬇ Download Text",
               href=f"/{text_filename}",
@@ -855,14 +968,21 @@ def ocr_result_display(results, file_hash, start_page, end_page, text_filename):
               style="background:var(--green);"),
             Button(
                 "📋 Copy",
+                # Fetched from the download route rather than read off the preview
+                # element: the DOM copy silently truncates long transcriptions.
                 onclick=(
-                    f"const t=document.getElementById('{preview_id}').textContent;"
-                    f"navigator.clipboard.writeText(t).then(()=>{{"
-                    f"this.textContent='✅ Copied!';this.style.background='var(--green)';"
-                    f"setTimeout(()=>{{this.textContent='📋 Copy';this.style.background='';}},2000);}});"
+                    f"const btn=this;"
+                    f"fetch('/{text_filename}')"
+                    f".then(r=>r.text())"
+                    f".then(t=>navigator.clipboard.writeText(t))"
+                    f".then(()=>{{"
+                    f"btn.textContent='✅ Copied!';btn.style.background='var(--green)';"
+                    f"setTimeout(()=>{{btn.textContent='📋 Copy';btn.style.background='';}},2000);}});"
                 ),
                 cls="button",
             ),
+            Span(f"{len(results['full_text']):,} characters", cls="pill",
+                 style="align-self:center;"),
             cls="action-row",
         ),
 
@@ -870,6 +990,14 @@ def ocr_result_display(results, file_hash, start_page, end_page, text_filename):
         Pre(results["full_text"],
             id=preview_id,
             cls="text-preview"),
+
+        # ── telemetry, on demand ───────────────────────────────────────────
+        Details(
+            Summary(details_summary, cls="details-summary"),
+            metrics,
+            H4("Per-page detail"),
+            Ul(*page_items, cls="page-detail-list"),
+        ),
 
         cls="result-area",
     )
@@ -1033,36 +1161,20 @@ _CAPTURE_JS = """
 
 
 def capture_card():
-    """Index-page card linking to the camera capture page.
+    """Index-page link to the camera capture page.
 
     Deliberately a link, not an inline camera: embedding a live preview on the index
-    would prompt for camera permission on every visit to the app.
+    would prompt for camera permission on every visit to the app. One row rather
+    than a full card so the whole index still fits one desktop viewport.
     """
-    return Div(
-        Div(
-            Div(cls="or-line"),
-            Span("or capture handwriting with a camera", cls="or-label"),
-            Div(cls="or-line"),
-            cls="or-divider",
-        ),
-        Div(
-            Div(
-                Span("📷", cls="url-section-icon"),
-                Div(
-                    P("Notebook to Text", cls="url-section-title"),
-                    P("Hold a page up to the webcam and transcribe the handwriting",
-                      cls="url-section-sub"),
-                    cls="url-section-text",
-                ),
-                cls="url-section-header",
-            ),
-            Button(
-                "Open Camera Capture",
-                onclick="window.location.href='/capture'",
-                style="width:100%;justify-content:center;",
-            ),
-            cls="url-card",
-        ),
+    return A(
+        Span("📷", cls="capture-link-icon"),
+        Span("Notebook to Text", style="font-weight:600;"),
+        Span("transcribe handwriting with your camera",
+             cls="capture-link-sub"),
+        Span("→", style="margin-left:auto;color:var(--text-muted);"),
+        href="/capture",
+        cls="capture-link",
     )
 
 
