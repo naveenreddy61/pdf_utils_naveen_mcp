@@ -12,7 +12,8 @@ from pdf_utils.config import (
     GCS_DELETE_AFTER_DOWNLOAD,
 )
 from web_app.core.database import (
-    FileRecord, get_file_info, update_last_accessed, insert_file_record
+    FileRecord, get_file_info, update_last_accessed, insert_file_record,
+    get_recent_files,
 )
 from web_app.core.utils import calculate_file_hash, sanitize_filename
 from web_app.services.pdf_service import get_page_count
@@ -22,8 +23,9 @@ from web_app.services.md_service import convert_md_to_pdf_bytes
 from web_app.ui.components import (
     upload_form, file_info_display, operation_buttons,
     error_message, upload_progress_poll, upload_progress_status,
-    url_input_form, auto_download_script, capture_card,
+    url_input_form, auto_download_script, capture_card, recent_files_list,
 )
+from pdf_utils.config import RECENT_FILES_LIMIT
 
 # Map MIME types / extensions to internal file_type labels
 _CONTENT_TYPE_MAP = {
@@ -193,11 +195,25 @@ def setup_routes(app, rt):
                     cls="page-subtitle",
                 ),
                 upload_form(),
+                recent_files_list(get_recent_files(RECENT_FILES_LIMIT)),
                 url_input_form(),
                 capture_card(),
                 cls="app-wrap",
             )
         )
+
+    # ── Reopen a previously uploaded file ────────────────────────────────────
+
+    @rt('/open-file/{file_hash}')
+    def open_file(file_hash: str):
+        """Return the same fragment an upload produces, without the upload."""
+        file_info = get_file_info(file_hash)
+        if not file_info:
+            return error_message("That file is no longer available.")
+        if not (UPLOAD_DIR / file_info.stored_filename).exists():
+            return error_message("That file has been cleaned up – please re-upload it.")
+        update_last_accessed(file_hash)
+        return _build_file_result_fragment(file_info, is_existing=True)
 
     # ── Upload (HTMX multipart POST) ─────────────────────────────────────────
 

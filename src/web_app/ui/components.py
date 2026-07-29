@@ -186,6 +186,67 @@ def _progress_bar(label: str, pct: int):
     )
 
 
+# ── Recent files ────────────────────────────────────────────────────────────
+
+def _relative_age(iso_ts: str) -> str:
+    """'3m ago' / '5h ago' / '2d ago' from an ISO timestamp."""
+    from datetime import datetime
+    try:
+        delta = datetime.now() - datetime.fromisoformat(iso_ts)
+    except (ValueError, TypeError):
+        return ""
+    secs = int(delta.total_seconds())
+    if secs < 60:
+        return "just now"
+    if secs < 3600:
+        return f"{secs // 60}m ago"
+    if secs < 86400:
+        return f"{secs // 3600}h ago"
+    return f"{secs // 86400}d ago"
+
+
+def recent_files_list(files):
+    """Compact list of previously uploaded files, each reopening in one click.
+
+    Files are deduped by hash and kept 30 days, but without this the only way
+    back to one is re-uploading the original — which needs the source file to
+    still be on the device you are sitting at.
+    """
+    if not files:
+        return None
+
+    icons = {"pdf": "📄", "epub": "📖", "image": "🖼"}
+    rows = []
+    for f in files:
+        pills = [Span(f"{f.file_size / 1024 / 1024:.1f} MB", cls="pill")]
+        if f.file_type == "pdf":
+            pills.insert(0, Span(f"{f.page_count} pages", cls="pill"))
+        elif f.file_type == "epub":
+            pills.insert(0, Span(f"{f.page_count} chapters", cls="pill"))
+        age = _relative_age(f.last_accessed)
+        if age:
+            pills.append(Span(age, cls="pill"))
+
+        rows.append(
+            Button(
+                Span(icons.get(f.file_type, "📄"), cls="recent-icon"),
+                Span(f.original_filename, cls="recent-name",
+                     title=f.original_filename),
+                Span(*pills, cls="recent-pills"),
+                cls="recent-row",
+                hx_get=f"/open-file/{f.file_hash}",
+                hx_target="#upload-result",
+                hx_swap="innerHTML",
+            )
+        )
+
+    return Div(
+        H4("Recent"),
+        Div(*rows, cls="recent-list"),
+        cls="recent-card",
+    )
+
+
 # ── Page wrapper ────────────────────────────────────────────────────────────
 
 def page_with_result(result_content):

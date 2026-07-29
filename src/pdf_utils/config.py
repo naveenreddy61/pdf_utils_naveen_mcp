@@ -65,6 +65,9 @@ HANDWRITING_OCR_MODEL = "gemini-flash-latest"
 HANDWRITING_THINKING_LEVEL = "MINIMAL"
 CAPTURE_JPEG_QUALITY = 0.92  # Canvas toBlob quality for camera frames (0.0-1.0)
 
+# How many previously uploaded files the index offers for one-click reopening
+RECENT_FILES_LIMIT = 5
+
 # Async OCR settings
 OCR_CONCURRENT_REQUESTS = 50  # Max concurrent LLM requests
 OCR_MAX_RETRIES = 3  # Max retry attempts per page

@@ -50,6 +50,20 @@ def delete_file_record(file_hash: str):
     files.delete(file_hash)
 
 
+def get_recent_files(limit: int = 5):
+    """Most recently opened files, newest first.
+
+    Rows whose stored file the cleanup service already deleted are skipped —
+    the DB row can outlive the file on disk, and a row like that would give a
+    dead button. Over-fetches so the disk check can't return a short list.
+    """
+    from pdf_utils.config import UPLOAD_DIR
+
+    rows = files(order_by='last_accessed desc', limit=limit * 4)
+    alive = [r for r in rows if (UPLOAD_DIR / r.stored_filename).exists()]
+    return alive[:limit]
+
+
 def get_old_files(cutoff_date: datetime):
     """Get files older than the cutoff date."""
     cutoff_str = cutoff_date.isoformat()
