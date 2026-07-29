@@ -171,6 +171,23 @@ def auto_download_script(stored_filename: str, download_as: str):
     )
 
 
+def task_progress_poll(task_id: str, status_url: str, label: str,
+                       pct: int = 0, interval: str = "750ms"):
+    """Self-replacing progress container for a background job.
+
+    Polls slower than the upload flow's 250 ms: these jobs run for minutes, and
+    the final swap carries no polling attributes so the loop ends on its own.
+    """
+    return Div(
+        _progress_bar(label, pct),
+        id=f"poll-{task_id}",
+        hx_get=status_url,
+        hx_trigger=f"every {interval}",
+        hx_target="this",
+        hx_swap="outerHTML",
+    )
+
+
 def _progress_bar(label: str, pct: int):
     return Div(
         Div(
