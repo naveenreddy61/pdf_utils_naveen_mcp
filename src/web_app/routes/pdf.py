@@ -32,10 +32,12 @@ def setup_routes(app, rt):
                 return Div(error_message("File not found."))
             
             file_path = UPLOAD_DIR / file_info.stored_filename
-            
-            # Extract TOC
+
+            # Chapter ranges come from the same TOC — computing them here lets
+            # each entry carry concrete page numbers for its OCR button.
             toc = pdf_service.extract_toc(file_path)
-            return toc_display(toc)
+            chapters = pdf_service.compute_chapter_ranges(toc, file_info.page_count)
+            return toc_display(toc, file_hash=file_hash, chapters=chapters)
             
         except Exception as e:
             return Div(error_message(f"Error extracting TOC: {str(e)}"))

@@ -320,75 +320,76 @@ def file_info_display(file_info, is_existing=False):
 # ── Operation buttons ────────────────────────────────────────────────────────
 
 def operation_buttons(file_hash, file_type="pdf"):
-    """Responsive CSS-grid of operation buttons with icon + label."""
+    """Responsive CSS-grid of operation buttons with icon + label.
+
+    Ops-grid buttons load into `#operation-form`; the forms they load submit
+    into `#operation-result` below. That way a form survives its own result —
+    changing a page range and rerunning no longer means re-opening the form.
+    """
     if file_type == "image":
-        return Div(
-            H3("Operations"),
-            Div(
-                _op_btn("🤖", "OCR",
-                        hx_get=f"/extract-text-llm-image/{file_hash}",
-                        hx_target="#operation-result",
-                        extra_cls="purple"),
-                cls="ops-grid",
-            ),
-            Div(id="operation-result"),
-        )
-
-    if file_type == "epub":
-        return Div(
-            H3("Operations"),
-            Div(
-                _op_btn("ℹ️", "Metadata",
-                        hx_get=f"/epub-metadata/{file_hash}",
-                        hx_target="#operation-result"),
-                _op_btn("📑", "TOC",
-                        hx_post=f"/process/epub-toc/{file_hash}",
-                        hx_target="#operation-result"),
-                _op_btn("📝", "Text",
-                        hx_get=f"/epub-text-form/{file_hash}",
-                        hx_target="#operation-result"),
-                _op_btn("🎨", "Images",
-                        hx_get=f"/epub-images-form/{file_hash}",
-                        hx_target="#operation-result",
-                        extra_cls="green"),
-                _op_btn("📚", "Chapters",
-                        hx_get=f"/epub-chapters-form/{file_hash}",
-                        hx_target="#operation-result",
-                        extra_cls="orange"),
-                cls="ops-grid",
-            ),
-            Div(id="operation-result"),
-        )
-
-    return Div(
-        H3("Operations"),
-        Div(
+        ops = [
+            _op_btn("🤖", "OCR",
+                    hx_get=f"/extract-text-llm-image/{file_hash}",
+                    hx_target="#operation-form",
+                    extra_cls="purple"),
+        ]
+    elif file_type == "epub":
+        ops = [
+            _op_btn("ℹ️", "Metadata",
+                    hx_get=f"/epub-metadata/{file_hash}",
+                    hx_target="#operation-form"),
+            _op_btn("📑", "TOC",
+                    hx_post=f"/process/epub-toc/{file_hash}",
+                    hx_target="#operation-form"),
+            _op_btn("📝", "Text",
+                    hx_get=f"/epub-text-form/{file_hash}",
+                    hx_target="#operation-form"),
+            _op_btn("🎨", "Images",
+                    hx_get=f"/epub-images-form/{file_hash}",
+                    hx_target="#operation-form",
+                    extra_cls="green"),
+            _op_btn("📚", "Chapters",
+                    hx_get=f"/epub-chapters-form/{file_hash}",
+                    hx_target="#operation-form",
+                    extra_cls="orange"),
+        ]
+    else:
+        ops = [
             _op_btn("🤖", "OCR",
                     hx_get=f"/extract-text-llm-form/{file_hash}",
-                    hx_target="#operation-result",
+                    hx_target="#operation-form",
                     extra_cls="purple"),
             _op_btn("📑", "TOC",
                     hx_post=f"/process/toc/{file_hash}",
-                    hx_target="#operation-result"),
+                    hx_target="#operation-form"),
             _op_btn("✂️", "Extract Pages",
                     hx_get=f"/extract-pages-form/{file_hash}",
-                    hx_target="#operation-result"),
+                    hx_target="#operation-form"),
             _op_btn("🖼", "To Images",
                     hx_get=f"/convert-images-form/{file_hash}",
-                    hx_target="#operation-result"),
+                    hx_target="#operation-form"),
             _op_btn("📝", "Text",
                     hx_get=f"/extract-text-form/{file_hash}",
-                    hx_target="#operation-result"),
+                    hx_target="#operation-form"),
             _op_btn("🎨", "Images",
                     hx_get=f"/extract-images-form/{file_hash}",
-                    hx_target="#operation-result",
+                    hx_target="#operation-form",
                     extra_cls="green"),
             _op_btn("📚", "Chapters",
                     hx_get=f"/download-chapters-form/{file_hash}",
-                    hx_target="#operation-result",
+                    hx_target="#operation-form",
                     extra_cls="orange"),
-            cls="ops-grid",
-        ),
+        ]
+
+    return Div(
+        H3("Operations"),
+        # Switching operations drops the previous operation's result, so a stale
+        # result never sits under an unrelated form. htmx events bubble, so one
+        # handler on the grid covers every button in it.
+        Div(*ops, cls="ops-grid",
+            **{"hx-on::before-request":
+               "document.getElementById('operation-result').innerHTML=''"}),
+        Div(id="operation-form"),
         Div(id="operation-result"),
     )
 
@@ -681,7 +682,13 @@ def url_pdf_ocr_result_display(result, txt_filename: str, file_content: str):
 
 # ── TOC ──────────────────────────────────────────────────────────────────────
 
-def toc_display(toc):
+def toc_display(toc, file_hash: str = None, chapters=None):
+    """Table of contents, with the two things you usually want next.
+
+    `chapters` are the page ranges `compute_chapter_ranges` derives from this
+    same TOC — passing them in lets each top-level entry carry a concrete
+    "OCR pp. 12–34" button instead of the user re-deriving the range by hand.
+    """
     if not toc:
         return Div(
             H3("Table of Contents"),
@@ -689,13 +696,25 @@ def toc_display(toc):
             cls="result-area",
         )
 
+    # Top-level entries are matched to their chapter range by title + page.
+    ranges = {(c["title"], c["start_page"]): c for c in (chapters or [])}
+
     items = []
     for level, title, page in toc:
         level_cls = f"toc-l{min(level, 3)}"
         bold = "font-weight:700;" if level == 0 else ""
+        ch = ranges.get((title, page)) if file_hash else None
         items.append(
             Li(
                 Span(title, cls="toc-title"),
+                *([Button(
+                    f'OCR pp. {ch["start_page"]}–{ch["end_page"]}',
+                    cls="toc-ocr-btn",
+                    hx_post=f"/process/extract-text-llm/{file_hash}",
+                    hx_vals=f'{{"start_page": {ch["start_page"]}, '
+                            f'"end_page": {ch["end_page"]}}}',
+                    hx_target="#operation-result",
+                )] if ch else []),
                 Span(f"p. {page}", cls="toc-page"),
                 cls=f"toc-item {level_cls}",
                 style=bold,
@@ -704,6 +723,16 @@ def toc_display(toc):
 
     return Div(
         H3("Table of Contents"),
+        *([Div(
+            Button(
+                "📚 Download as chapters",
+                hx_get=f"/download-chapters-form/{file_hash}",
+                hx_target="#operation-form",
+                style="background:var(--orange);",
+            ),
+            cls="action-row",
+            style="margin-top:0;",
+        )] if file_hash else []),
         Ul(*items, cls="toc-list"),
         cls="result-area",
     )

@@ -349,6 +349,20 @@ tbody tr:hover { background: var(--surface-alt); }
 .toc-item:last-child { border-bottom: none; }
 .toc-title { flex: 1; }
 .toc-page  { color: var(--text-muted); font-size: 0.78rem; white-space: nowrap; }
+/* Per-chapter OCR shortcut — subtle so the TOC stays readable as a list. */
+.toc-ocr-btn {
+  padding: 0.1rem 0.45rem;
+  font-size: 0.7rem;
+  font-weight: 500;
+  background: transparent;
+  color: var(--purple);
+  border: 1px solid #c4b5fd;
+  border-radius: 999px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.toc-ocr-btn:hover { background: var(--purple-light); color: var(--purple); }
+
 .toc-l0    { font-weight: 700; }
 .toc-l1    { padding-left: 1rem; }
 .toc-l2    { padding-left: 2rem; }
