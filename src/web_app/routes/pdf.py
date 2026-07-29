@@ -629,9 +629,6 @@ def setup_routes(app, rt):
                 progress_callback=progress_callback
             )
             
-            # Add progress messages to results for display
-            results["progress_messages"] = progress_messages
-            
             # Save text to file for download
             # Calculate cache hit rate for filename
             pages_processed = results.get('pages_processed', 0)
@@ -752,15 +749,6 @@ def setup_routes(app, rt):
                 P(f"{method_icon} {method_text} · {processing_time:.1f}s",
                   cls="alert-success"),
 
-                # Metrics
-                Div(
-                    Div(P("⏱ Time",   cls="metric-label"), P(f"{processing_time:.1f}s",    cls="metric-value"), cls="metric-box"),
-                    Div(P("📊 Chars",  cls="metric-label"), P(f"{len(results['full_text']):,}", cls="metric-value"), cls="metric-box"),
-                    Div(P("🔤 In tok", cls="metric-label"), P(f"{results['total_input_tokens']:,}",  cls="metric-value"), cls="metric-box"),
-                    Div(P("🔤 Out tok",cls="metric-label"), P(f"{results['total_output_tokens']:,}", cls="metric-value"), cls="metric-box"),
-                    cls="metrics-row",
-                ),
-
                 # Action buttons
                 Div(
                     A("⬇ Download Text",
@@ -788,6 +776,25 @@ def setup_routes(app, rt):
 
                 H4("Preview"),
                 Pre(results["full_text"], id=preview_id, cls="text-preview"),
+
+                # Telemetry sits below the text, folded away.
+                Details(
+                    Summary(
+                        f"Details — {processing_time:.1f}s · "
+                        f"{len(results['full_text']):,} chars · "
+                        f"{results['total_input_tokens']:,} tok in · "
+                        f"{results['total_output_tokens']:,} tok out"
+                        + (f" · {token_count:,} tok of text" if token_count else ""),
+                        cls="details-summary",
+                    ),
+                    Div(
+                        Div(P("⏱ Time",   cls="metric-label"), P(f"{processing_time:.1f}s",    cls="metric-value"), cls="metric-box"),
+                        Div(P("📊 Chars",  cls="metric-label"), P(f"{len(results['full_text']):,}", cls="metric-value"), cls="metric-box"),
+                        Div(P("🔤 In tok", cls="metric-label"), P(f"{results['total_input_tokens']:,}",  cls="metric-value"), cls="metric-box"),
+                        Div(P("🔤 Out tok",cls="metric-label"), P(f"{results['total_output_tokens']:,}", cls="metric-value"), cls="metric-box"),
+                        cls="metrics-row",
+                    ),
+                ),
 
                 cls="result-area"
             )

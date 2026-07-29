@@ -582,7 +582,7 @@ def url_pdf_ocr_result_display(result, txt_filename: str, file_content: str):
             P(result.url, cls="url-result-source"),
             cls="url-result-header",
         ),
-        # ── quality badge ────────────────────────────────────────────────
+        # ── quality badge (stays visible — it qualifies the text below) ──
         Div(
             Span(
                 f"{q_icon} Capture quality: {q}",
@@ -592,45 +592,8 @@ def url_pdf_ocr_result_display(result, txt_filename: str, file_content: str):
                     f"color:{q_color};background:{q_bg};"
                 ),
             ),
-            P(result.quality_reason,
-              style="font-size:0.78rem;color:var(--text-muted);margin-top:0.3rem;"),
             style="margin-bottom:0.75rem;",
         ),
-        # ── metrics ──────────────────────────────────────────────────────
-        Div(
-            Div(
-                P("Pages", cls="metric-label"),
-                P(str(result.page_count), cls="metric-value"),
-                cls="metric-box",
-            ),
-            Div(
-                P("Characters", cls="metric-label"),
-                P(f"{result.char_count:,}", cls="metric-value"),
-                cls="metric-box",
-            ),
-            Div(
-                P("Words", cls="metric-label"),
-                P(f"{result.word_count:,}", cls="metric-value"),
-                cls="metric-box",
-            ),
-            Div(
-                P("Time", cls="metric-label"),
-                P(f"{result.processing_time:.1f}s", cls="metric-value"),
-                cls="metric-box",
-            ),
-            cls="metrics-row",
-            style="margin-bottom:0.5rem;",
-        ),
-        # ── token metrics ─────────────────────────────────────────────────
-        Div(
-            Span(
-                f"Tokens in: {result.total_input_tokens:,} · out: {result.total_output_tokens:,}"
-                + (f" · saved: {result.tokens_saved:,}" if result.tokens_saved else "")
-                + (f" · cached pages: {result.cached_pages}" if result.cached_pages else ""),
-                style="font-size:0.75rem;color:var(--text-muted);",
-            ),
-            style="margin-bottom:0.875rem;",
-        ) if result.total_input_tokens else Div(),
         # ── actions ──────────────────────────────────────────────────────
         Div(
             A(
@@ -653,11 +616,53 @@ def url_pdf_ocr_result_display(result, txt_filename: str, file_content: str):
                 ),
                 cls="button",
             ),
+            Span(f"{result.char_count:,} characters", cls="pill",
+                 style="align-self:center;"),
             cls="action-row",
         ),
         # ── preview ───────────────────────────────────────────────────────
         H4("Preview"),
         Pre(file_content, id=preview_id, cls="text-preview"),
+        # ── diagnostics, on demand ───────────────────────────────────────
+        Details(
+            Summary(
+                f"Details — {result.page_count} pages · {result.word_count:,} words"
+                f" · {result.processing_time:.1f}s",
+                cls="details-summary",
+            ),
+            P(result.quality_reason,
+              style="font-size:0.78rem;color:var(--text-muted);margin-bottom:0.5rem;"),
+            Div(
+                Div(
+                    P("Pages", cls="metric-label"),
+                    P(str(result.page_count), cls="metric-value"),
+                    cls="metric-box",
+                ),
+                Div(
+                    P("Characters", cls="metric-label"),
+                    P(f"{result.char_count:,}", cls="metric-value"),
+                    cls="metric-box",
+                ),
+                Div(
+                    P("Words", cls="metric-label"),
+                    P(f"{result.word_count:,}", cls="metric-value"),
+                    cls="metric-box",
+                ),
+                Div(
+                    P("Time", cls="metric-label"),
+                    P(f"{result.processing_time:.1f}s", cls="metric-value"),
+                    cls="metric-box",
+                ),
+                cls="metrics-row",
+                style="margin-bottom:0.5rem;",
+            ),
+            *([Span(
+                f"Tokens in: {result.total_input_tokens:,} · out: {result.total_output_tokens:,}"
+                + (f" · saved: {result.tokens_saved:,}" if result.tokens_saved else "")
+                + (f" · cached pages: {result.cached_pages}" if result.cached_pages else ""),
+                style="font-size:0.75rem;color:var(--text-muted);",
+            )] if result.total_input_tokens else []),
+        ),
         cls="result-area",
     )
 
@@ -953,45 +958,28 @@ def ocr_result_display(results, file_hash, start_page, end_page, text_filename):
         for p in fallback_pages:
             page_items.append(Li(f"📄 Page {p}: PyMuPDF",       style="color:#ea580c"))
 
-    # ── progress messages ──────────────────────────────────────────────────
-    prog_section = []
-    if results.get("progress_messages"):
-        prog_section = [Div(
-            H4("Processing log"),
-            Ul(*[Li(m, style="font-size:0.85rem;color:var(--text-muted);padding:0.15rem 0;")
-                 for m in results["progress_messages"]],
-               style="list-style:none;padding:0;"),
-            style="background:var(--surface-alt);border:1px solid var(--border);border-radius:var(--radius);padding:0.75rem;margin-bottom:0.75rem;",
-        )]
+    # One-line summary of everything hidden behind the disclosure.
+    summary_bits = [f"{proc_time:.1f}s", f"{cache_rate:.0f}% cached"]
+    if in_tok or out_tok:
+        summary_bits.append(f"{in_tok:,} tok in")
+        summary_bits.append(f"{out_tok:,} tok out")
+    details_summary = "Details — " + " · ".join(summary_bits)
+
+    failed = results.get("failed_pages", [])
 
     return Div(
         P(results.get("summary", "OCR complete"),
           cls="alert-success"),
 
-        metrics,
+        # Failures stay outside the collapse — a silently hidden failure is worse
+        # than the telemetry noise this section exists to bury.
+        *([P(f"⚠ {len(failed)} page(s) failed: "
+             + ", ".join(str(p) for p in failed[:20])
+             + ("…" if len(failed) > 20 else ""),
+            cls="alert-warning")]
+          if failed else []),
 
-        *prog_section,
-
-        # page-by-page
-        Div(
-            H4("Per-page detail"),
-            Ul(*page_items, cls="page-detail-list"),
-            style="background:var(--surface-alt);border:1px solid var(--border);border-radius:var(--radius);padding:0.75rem;margin-bottom:0.75rem;",
-        ),
-
-        # char count / failures
-        Div(
-            Span(f"{len(results['full_text']):,} characters",
-                 cls="pill"),
-            *([Span(f"⚠ {len(results.get('failed_pages',[]))} page(s) failed",
-                    cls="pill",
-                    style="border-color:var(--red);color:var(--red);")]
-              if results.get("failed_pages") else []),
-            cls="file-meta",
-            style="margin-bottom:0.75rem;",
-        ),
-
-        # action buttons
+        # ── what the user actually came for ────────────────────────────────
         Div(
             A("⬇ Download Text",
               href=f"/{text_filename}",
@@ -1013,6 +1001,8 @@ def ocr_result_display(results, file_hash, start_page, end_page, text_filename):
                 ),
                 cls="button",
             ),
+            Span(f"{len(results['full_text']):,} characters", cls="pill",
+                 style="align-self:center;"),
             cls="action-row",
         ),
 
@@ -1020,6 +1010,14 @@ def ocr_result_display(results, file_hash, start_page, end_page, text_filename):
         Pre(results["full_text"],
             id=preview_id,
             cls="text-preview"),
+
+        # ── telemetry, on demand ───────────────────────────────────────────
+        Details(
+            Summary(details_summary, cls="details-summary"),
+            metrics,
+            H4("Per-page detail"),
+            Ul(*page_items, cls="page-detail-list"),
+        ),
 
         cls="result-area",
     )
