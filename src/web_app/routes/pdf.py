@@ -343,11 +343,16 @@ def setup_routes(app, rt):
                       style="background:var(--green);"),
                     Button(
                         "📋 Copy",
+                        # Fetch from the download route — reading the preview's
+                        # textContent truncates on large extractions.
                         onclick=(
-                            f"const t=document.getElementById('{preview_id}').textContent;"
-                            f"navigator.clipboard.writeText(t).then(()=>{{"
-                            f"this.textContent='✅ Copied!';this.style.background='var(--green)';"
-                            f"setTimeout(()=>{{this.textContent='📋 Copy';this.style.background='';}},2000);}});"
+                            f"const btn=this;"
+                            f"fetch('{download_url}')"
+                            f".then(r=>r.text())"
+                            f".then(t=>navigator.clipboard.writeText(t))"
+                            f".then(()=>{{"
+                            f"btn.textContent='✅ Copied!';btn.style.background='var(--green)';"
+                            f"setTimeout(()=>{{btn.textContent='📋 Copy';btn.style.background='';}},2000);}});"
                         ),
                         cls="button",
                     ),
@@ -740,11 +745,16 @@ def setup_routes(app, rt):
                       style="background:var(--green);"),
                     Button(
                         "📋 Copy",
+                        # Fetch from the download route — reading the preview's
+                        # textContent truncates on large extractions.
                         onclick=(
-                            f"const t=document.getElementById('{preview_id}').textContent;"
-                            f"navigator.clipboard.writeText(t).then(()=>{{"
-                            f"this.textContent='✅ Copied!';this.style.background='var(--green)';"
-                            f"setTimeout(()=>{{this.textContent='📋 Copy';this.style.background='';}},2000);}});"
+                            f"const btn=this;"
+                            f"fetch('/{text_filename}')"
+                            f".then(r=>r.text())"
+                            f".then(t=>navigator.clipboard.writeText(t))"
+                            f".then(()=>{{"
+                            f"btn.textContent='✅ Copied!';btn.style.background='var(--green)';"
+                            f"setTimeout(()=>{{btn.textContent='📋 Copy';btn.style.background='';}},2000);}});"
                         ),
                         cls="button",
                     ),
