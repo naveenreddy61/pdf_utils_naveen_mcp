@@ -141,7 +141,31 @@ Key commands:
 
 ## URL Processing Architecture
 
-The app exposes two URL-based extraction modes from the main page:
+The app exposes three URL-based modes from the main page. Two extract *text from
+a web page*; the third produces an *uploaded file*, which is why it gets its own
+box rather than a third button on the URL card.
+
+### PDF-from-URL (`pdf_url_service.py`)
+For links that point straight at a PDF (`…/w35559.pdf`). The server downloads
+the bytes, then hands them to the same `_run_upload_task` the file picker uses,
+so the result is an ordinary uploaded PDF with the full toolset available.
+- Route: `POST /process/pdf-from-url` → returns `upload_progress_poll(...)`,
+  polled at `/upload-status/{task_id}` like any other upload
+- **Validation is on the bytes, not the suffix** (`%PDF-` magic). A `.pdf` URL
+  behind a paywall or login wall returns HTML with a 200, and registering that
+  as a PDF fails later and less legibly.
+- **SSRF guard**: the server dereferences a user-supplied URL, so every hop's
+  host is resolved and rejected if it maps to a private/loopback/link-local
+  address. Redirects are therefore followed **manually** (`follow_redirects=False`
+  plus a loop) — letting httpx follow them would skip the check on hops 2..n.
+- The body is streamed with a running byte count so an oversized response is cut
+  off mid-transfer, not after it is already in memory. Cap is
+  `EFFECTIVE_MAX_UPLOAD_MB` (no proxy sits in this path — the bytes arrive
+  server-side).
+- A browser `User-Agent` is sent (`PDF_URL_USER_AGENT`); several publishers 403 a
+  bare client.
+
+The two extraction modes:
 
 ### URL-to-Markdown (`url_service.py`)
 Uses **trafilatura** to fetch and extract article text from any URL.

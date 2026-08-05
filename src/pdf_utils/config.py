@@ -96,6 +96,16 @@ OCR_CACHE_DB_PATH = Path("data/ocr_cache.db")  # SQLite DB for caching
 URL_FETCH_TIMEOUT = 30   # seconds
 URL_MAX_CONTENT_LENGTH_MB = 10  # skip pages larger than this
 
+# PDF-from-URL settings (server-side download of a direct .pdf link)
+PDF_URL_FETCH_TIMEOUT = 120       # seconds for the whole download
+PDF_URL_MAX_REDIRECTS = 5
+# Sent because several publishers (SSRN, JSTOR, some journals) return 403 to a
+# bare client. Nothing here pretends to be a browser beyond the User-Agent.
+PDF_URL_USER_AGENT = (
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/125.0.0.0 Safari/537.36"
+)
+
 # URL-to-PDF-OCR settings (browser-based capture)
 URL_PDF_BROWSER_TIMEOUT = 30000      # ms: page navigation + network idle timeout
 URL_PDF_PRINT_WAIT_MS = 1500         # ms: wait after scroll for popups to appear

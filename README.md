@@ -10,6 +10,9 @@ A powerful, browser-based application for processing PDF documents and images wi
 - **Page to Image Conversion**: Convert PDF pages to high-quality PNG or JPEG images (72-300 DPI)
 - **Text Extraction**: Extract text from PDF pages with optional Markdown formatting
 - **AI-Powered OCR**: Extract text from scanned PDFs and images using Google Gemini Flash Lite
+- **PDF from a Link**: Paste a URL that points at a PDF (e.g. an NBER or arXiv
+  paper) and the server downloads it for you — no save-then-upload round trip.
+  The fetched file behaves exactly like an uploaded one.
 
 ### Image Processing
 - **Multi-Format Support**: Upload and process JPG, PNG, WEBP images
@@ -176,6 +179,8 @@ The application will start on http://localhost:8000 (or your specified port).
 #### 1. Upload Files
 
 - Click "Choose File" or drag and drop a file
+- Or paste a direct PDF link into the **PDF from a link** box — the server
+  downloads it and registers it as a normal upload
 - Supported formats: PDF, JPG, JPEG, PNG, WEBP
 - Maximum file size: 100MB
 - Files are retained for 30 days

@@ -23,7 +23,7 @@ from web_app.services.md_service import convert_md_to_pdf_bytes
 from web_app.ui.components import (
     upload_form, file_info_display, operation_buttons,
     error_message, upload_progress_poll, upload_progress_status,
-    url_input_form, auto_download_script, capture_card,
+    url_input_form, auto_download_script, capture_card, pdf_url_form,
 )
 
 # Map MIME types / extensions to internal file_type labels
@@ -197,6 +197,33 @@ async def _run_gcs_upload_task(
             tmp_path.unlink()
 
 
+async def _run_pdf_url_task(task_id: str, url: str) -> None:
+    """Background coroutine: download a PDF link, then register it as an upload.
+
+    Same delegation trick as the GCS path — once the bytes are in hand the file
+    is processed by _run_upload_task, so dedup, page counting and the result UI
+    behave exactly as they do for a picked file.
+    """
+    from web_app.services.pdf_url_service import download_pdf_from_url
+
+    try:
+        _tasks[task_id] = {"phase": "Downloading PDF…", "pct": 15}
+        await asyncio.sleep(0)  # yield so the polling response goes out first
+
+        result = await download_pdf_from_url(
+            url, EFFECTIVE_MAX_UPLOAD_MB * 1024 * 1024
+        )
+        if result.error:
+            _tasks[task_id] = {"phase": "error", "pct": 0, "error": result.error}
+            return
+
+        await _run_upload_task(task_id, result.content, result.filename, "pdf")
+
+    except Exception as exc:
+        import traceback; traceback.print_exc()
+        _tasks[task_id] = {"phase": "error", "pct": 0, "error": str(exc)}
+
+
 def setup_routes(app, rt):
     """Set up main routes for the application."""
 
@@ -213,6 +240,7 @@ def setup_routes(app, rt):
                     cls="page-subtitle",
                 ),
                 upload_form(),
+                pdf_url_form(),
                 url_input_form(),
                 capture_card(),
                 cls="app-wrap",
@@ -305,6 +333,29 @@ def setup_routes(app, rt):
             hx_target="this",
             hx_swap="outerHTML",
         )
+
+    # ── PDF from a direct link (server-side download) ────────────────────────
+
+    @rt('/process/pdf-from-url', methods=['POST'])
+    async def pdf_from_url(request: Request):
+        """Fetch a PDF URL on the server, then treat it as a normal upload.
+
+        Returns the shared polling fragment rather than the finished result:
+        a slow publisher plus a 300-page OCR-able PDF is far longer than a
+        request should stay open.
+        """
+        form = await request.form()
+        url = (form.get("url") or "").strip()
+        if not url:
+            return error_message("Please enter a link to a PDF.")
+
+        task_id = uuid.uuid4().hex[:12]
+        _tasks[task_id] = {"phase": "Starting…", "pct": 5}
+
+        asyncio.create_task(_run_pdf_url_task(task_id, url))
+        asyncio.get_event_loop().call_later(300, lambda: _tasks.pop(task_id, None))
+
+        return upload_progress_poll(task_id)
 
     # ── Direct-to-cloud upload (files too big for the proxy) ─────────────────
     # Used by upload_form()'s JS only when GCS is configured and the file

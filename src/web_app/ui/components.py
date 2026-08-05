@@ -468,6 +468,87 @@ def _op_btn(icon: str, label: str, extra_cls: str = "", **htmx_attrs):
     )
 
 
+# ── PDF from a direct link ───────────────────────────────────────────────────
+
+def pdf_url_form():
+    """Paste a link that ends in .pdf; the server downloads it for you.
+
+    Deliberately its own box rather than a third button on the URL card: those
+    two extract *text from a web page*, while this one produces an uploaded
+    file, lands in `#pdf-url-result`, and unlocks the whole PDF toolset. Sharing
+    the card would put two different kinds of outcome behind adjacent buttons.
+
+    Same htmx caveat as url_input_form(): htmx cancels the native submit for a
+    button inside a form, taking the validation bubble with it, so the guard
+    calls reportValidity() itself.
+    """
+    validate_guard = (
+        "if(!this.form.reportValidity()){"
+        "event.preventDefault();event.stopImmediatePropagation();}"
+    )
+
+    return Div(
+        Div(
+            Div(cls="or-line"),
+            Span("or fetch a PDF link", cls="or-label"),
+            Div(cls="or-line"),
+            cls="or-divider",
+        ),
+        Div(
+            Div(
+                Span("📄", cls="url-section-icon"),
+                Div(
+                    P("PDF from a link", cls="url-section-title"),
+                    P("For URLs that point straight at a PDF file. The server "
+                      "downloads it, then every PDF operation works on it as if "
+                      "you had uploaded the file yourself.",
+                      cls="url-section-sub"),
+                    cls="url-section-text",
+                ),
+                cls="url-section-header",
+            ),
+            Form(
+                Input(
+                    type="url",
+                    name="url",
+                    placeholder="https://example.com/paper.pdf",
+                    autocomplete="off",
+                    required=True,
+                    style="margin-bottom:0.5rem;",
+                ),
+                Div(
+                    Button(
+                        "⬇️ Fetch PDF",
+                        type="submit",
+                        onclick=validate_guard,
+                        hx_post="/process/pdf-from-url",
+                        hx_include="closest form",
+                        hx_target="#pdf-url-result",
+                        hx_swap="innerHTML",
+                        hx_indicator="#pdf-url-indicator",
+                        style="justify-content:center;",
+                    ),
+                    cls="url-actions",
+                ),
+                Div(
+                    Span(f"Downloads up to {EFFECTIVE_MAX_UPLOAD_MB} MB",
+                         style="font-size:0.75rem;color:var(--text-muted);"),
+                    Div(
+                        Span(cls="spinner"),
+                        Span("Fetching…"),
+                        id="pdf-url-indicator",
+                        cls="htmx-indicator",
+                        style="color:var(--primary);font-size:0.8rem;font-weight:500;gap:0.35rem;",
+                    ),
+                    cls="url-options",
+                ),
+            ),
+            cls="url-card",
+        ),
+        Div(id="pdf-url-result"),
+    )
+
+
 # ── URL to Markdown ──────────────────────────────────────────────────────────
 
 def url_input_form():
