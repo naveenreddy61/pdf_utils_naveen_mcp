@@ -67,7 +67,16 @@ OCR_MAX_TOKENS = 4096
 # Handwriting OCR (camera capture) settings
 # Kept on separate knobs so a regression in one tier cannot degrade the other.
 HANDWRITING_OCR_MODEL = "gemini-flash-latest"
-# MINIMAL, measured — not a guess. Across 5 handwritten pages (standup notes, hour
+# LOW is a floor imposed by the model, not a preference. As of 2026-08-14 the
+# `gemini-flash-latest` stub moved to a generation that rejects MINIMAL outright:
+#
+#   400 INVALID_ARGUMENT: Thinking level MINIMAL is not supported for this model.
+#
+# That is a hard failure on every /capture transcription, so LOW is the lowest setting
+# that runs at all on this tier. Flash-Lite still accepts MINIMAL, which is why
+# OCR_THINKING_LEVEL above is unchanged.
+#
+# We pay real accuracy for this. Measured across 5 handwritten pages (standup notes, hour
 # estimates, a question list, a dense demo script, and a page of Ramsey-model calculus),
 # 2 runs per cell, scoring recovery of the hard terms and LaTeX structures:
 #
@@ -77,9 +86,10 @@ HANDWRITING_OCR_MODEL = "gemini-flash-latest"
 # More thinking made transcription worse, not better, and MEDIUM has a failure mode where
 # the model emits its own deliberation ("Let's read: J-a-s-p-r-e-e-t... Wait!") as the
 # transcription. Transcription is perception, not reasoning — there is nothing to reason
-# about, so the budget gets spent second-guessing correct readings. Raise this only with
-# fresh measurements.
-HANDWRITING_THINKING_LEVEL = "MINIMAL"
+# about, so the budget gets spent second-guessing correct readings. So: do not raise this
+# past LOW, and drop back to MINIMAL if a future stub accepts it again. Those numbers
+# predate the current stub — re-measure before trusting them as this model's scores.
+HANDWRITING_THINKING_LEVEL = "LOW"
 CAPTURE_JPEG_QUALITY = 0.92  # Canvas toBlob quality for camera frames (0.0-1.0)
 
 # Async OCR settings

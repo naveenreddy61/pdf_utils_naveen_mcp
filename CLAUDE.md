@@ -421,7 +421,7 @@ OCR_CONCURRENT_REQUESTS = 50             # Rate limiting for API calls
 OCR_MAX_TOKENS = 4096                    # Per-page token limit
 
 HANDWRITING_OCR_MODEL = "gemini-flash-latest"   # Camera capture uses the full Flash tier
-HANDWRITING_THINKING_LEVEL = "MINIMAL"
+HANDWRITING_THINKING_LEVEL = "LOW"             # MINIMAL is rejected by this stub, see below
 ```
 
 ### Gemini 3.x parameter rules (important)
@@ -434,12 +434,19 @@ HANDWRITING_THINKING_LEVEL = "MINIMAL"
 - **Set `thinking_level` explicitly** (`MINIMAL` / `LOW` / `MEDIUM` / `HIGH`). Defaults vary
   by tier — Flash-Lite defaults to minimal, Flash to medium — so relying on the default
   makes cost and latency change silently when a stub moves.
-- **Use `MINIMAL` for OCR, and do not raise it without measuring.** Across 5 handwritten
-  pages x 2 models x 3 levels x 2 runs, more thinking made transcription *worse*:
-  flash MINIMAL 96.5% / LOW 92.2% / MEDIUM 80.5%; flash-lite MINIMAL 92.6% / LOW 88.7% /
-  MEDIUM 89.0%. MEDIUM also costs ~8x and ~8x the latency, and has a failure mode where the
-  model emits its own letter-by-letter deliberation as the transcription. Transcription is
-  perception, not reasoning — extra budget gets spent second-guessing correct readings.
+- **Use the lowest level the model accepts, and do not raise it without measuring.** Across
+  5 handwritten pages x 2 models x 3 levels x 2 runs, more thinking made transcription
+  *worse*: flash MINIMAL 96.5% / LOW 92.2% / MEDIUM 80.5%; flash-lite MINIMAL 92.6% /
+  LOW 88.7% / MEDIUM 89.0%. MEDIUM also costs ~8x and ~8x the latency, and has a failure
+  mode where the model emits its own letter-by-letter deliberation as the transcription.
+  Transcription is perception, not reasoning — extra budget gets spent second-guessing
+  correct readings.
+- **Not every tier accepts every level, and this changes under you.** On 2026-08-14
+  `gemini-flash-latest` began returning `400 INVALID_ARGUMENT: Thinking level MINIMAL is
+  not supported for this model`, breaking every `/capture` transcription; handwriting is
+  now on `LOW`. Flash-Lite still accepts MINIMAL, so print OCR was untouched — the split
+  knobs did their job. When a stub moves, probe the levels before assuming a config value
+  still applies.
 - **Count thinking tokens.** They are billed as output but arrive in a separate
   `thoughts_token_count` field. Use `extract_token_usage(response)`; reading
   `candidates_token_count` alone understated cost by ~3x at MEDIUM.
