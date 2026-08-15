@@ -30,6 +30,9 @@ A powerful, browser-based application for processing PDF documents and images wi
 - **Marked Uncertainty**: Doubtful words are flagged `[?]` and unreadable ones `[illegible]`,
   so you know exactly where to check
 - **Editable Result**: Fix any misreading in the textarea before copying
+- **Multi-page Session**: Capture page after page; each accepted frame starts transcribing
+  in the background. Done waits only for whatever is still running, then Copy all joins
+  the pages with `--- page break ---`
 - **Nothing Stored**: The frame and the transcription are processed in memory and never
   written to disk
 

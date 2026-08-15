@@ -639,4 +639,63 @@ details[open] > .details-summary { margin-bottom: 0.25rem; }
   line-height: 1.6;
   color: var(--text);
 }
+.cap-pages {
+  display: flex;
+  gap: 0.5rem;
+  overflow-x: auto;
+  margin: 0 0 0.625rem;
+  padding-bottom: 0.15rem;
+}
+.cap-page-chip {
+  position: relative;
+  flex: 0 0 auto;
+  width: 64px;
+  border-radius: var(--radius);
+  overflow: hidden;
+  border: 2px solid var(--border);
+  background: #000;
+}
+.cap-page-chip img {
+  display: block;
+  width: 64px;
+  height: 48px;
+  object-fit: cover;
+}
+.cap-page-chip-num {
+  position: absolute;
+  left: 3px;
+  bottom: 3px;
+  font-size: 0.65rem;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.55);
+  padding: 0 0.25rem;
+  border-radius: 3px;
+}
+.cap-page-chip-state {
+  position: absolute;
+  right: 3px;
+  top: 2px;
+  font-size: 0.7rem;
+  line-height: 1;
+  color: #fff;
+  text-shadow: 0 0 2px #000;
+}
+.cap-page-chip.is-pending { border-color: var(--primary); }
+.cap-page-chip.is-done { border-color: var(--green); }
+.cap-page-chip.is-error,
+.cap-page-chip.is-expired { border-color: var(--red); }
+.cap-page-result { margin-top: 0.75rem; }
+.cap-page-result .cap-textarea { min-height: 180px; }
+.cap-page-result-solo .cap-textarea { min-height: 320px; }
+.cap-page-result-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.3rem;
+  flex-wrap: wrap;
+}
+.cap-page-result-title { font-size: 0.82rem; font-weight: 600; }
+.cap-page-error { color: var(--red); font-size: 0.78rem; }
+.cap-page-copy { padding: 0.25rem 0.65rem; font-size: 0.78rem; }
 """

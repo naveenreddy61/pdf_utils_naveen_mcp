@@ -5,6 +5,8 @@ import json
 from fasthtml.common import *
 from pdf_utils.config import (
     CAPTURE_JPEG_QUALITY,
+    NOTEBOOK_PAGE_BREAK,
+    NOTEBOOK_SESSION_MAX_PAGES,
     GCS_ENABLED, GCS_DIRECT_THRESHOLD_BYTES, EFFECTIVE_MAX_UPLOAD_MB,
 )
 
@@ -1267,11 +1269,20 @@ _CAPTURE_JS = """
   var video   = document.getElementById('cap-video');
   var canvas  = document.getElementById('cap-canvas');
   var status  = document.getElementById('cap-status');
-  var input   = document.getElementById('cap-frame');
+  var strip   = document.getElementById('cap-pages');
+  var result  = document.getElementById('capture-result');
   var shoot   = document.getElementById('cap-shoot');
   var retake  = document.getElementById('cap-retake');
-  var send    = document.getElementById('cap-send');
+  var nextBtn = document.getElementById('cap-next');
+  var doneBtn = document.getElementById('cap-done');
   var stream  = null;
+  var cameraReady = false;
+  var currentBlob = null;
+  var posting = false;
+  var waiting = false;
+  var pollTimer = null;
+  var pages = [];
+  var MAX_PAGES = __MAX_PAGES__;
 
   function say(msg, isError) {
     status.textContent = msg;
@@ -1280,6 +1291,192 @@ _CAPTURE_JS = """
 
   function stop() {
     if (stream) { stream.getTracks().forEach(function (t) { t.stop(); }); stream = null; }
+  }
+
+  function resumeLive() {
+    currentBlob = null;
+    canvas.style.display = 'none';
+    video.style.display  = 'block';
+    syncButtons();
+  }
+
+  function atLimit() {
+    return pages.length >= MAX_PAGES;
+  }
+
+  function syncButtons() {
+    var frozen = !!currentBlob;
+    var hasPages = pages.length > 0;
+    var busy = posting || waiting;
+
+    shoot.style.display = frozen ? 'none' : 'inline-flex';
+    shoot.disabled = busy || !cameraReady || atLimit();
+
+    retake.style.display = frozen ? 'inline-flex' : 'none';
+    retake.disabled = busy;
+
+    nextBtn.style.display = frozen && !atLimit() ? 'inline-flex' : 'none';
+    nextBtn.disabled = busy;
+
+    // Frozen: this freeze can be the last page. Live + existing pages: finish
+    // without another capture (Next on the last page is not a dead end).
+    doneBtn.style.display = (frozen || hasPages) ? 'inline-flex' : 'none';
+    doneBtn.disabled = busy || (!frozen && !hasPages);
+  }
+
+  function renderStrip() {
+    if (!pages.length) {
+      strip.innerHTML = '';
+      strip.hidden = true;
+      return;
+    }
+    strip.hidden = false;
+    strip.innerHTML = '';
+    pages.forEach(function (p) {
+      var chip = document.createElement('div');
+      chip.className = 'cap-page-chip is-' + p.status;
+      var img = document.createElement('img');
+      img.src = p.thumb;
+      img.alt = 'Page ' + p.n;
+      var num = document.createElement('span');
+      num.className = 'cap-page-chip-num';
+      num.textContent = String(p.n);
+      var st = document.createElement('span');
+      st.className = 'cap-page-chip-state';
+      if (p.status === 'done') st.textContent = '✓';
+      else if (p.status === 'error' || p.status === 'expired') st.textContent = '!';
+      else st.textContent = '…';
+      chip.appendChild(img);
+      chip.appendChild(num);
+      chip.appendChild(st);
+      strip.appendChild(chip);
+    });
+  }
+
+  function refreshPageStatuses() {
+    var pending = pages.filter(function (p) { return p.status === 'pending'; });
+    if (!pending.length) {
+      if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+      return;
+    }
+    pending.forEach(function (p) {
+      fetch('/notebook-page-status/' + p.taskId)
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          if (data.status && data.status !== p.status) {
+            p.status = data.status;
+            if (data.error) p.error = data.error;
+            renderStrip();
+          }
+        })
+        .catch(function () { /* next tick retries */ });
+    });
+  }
+
+  function startPolling() {
+    if (pollTimer) return;
+    pollTimer = setInterval(refreshPageStatuses, 1000);
+    refreshPageStatuses();
+  }
+
+  function waitingHtml(done, total) {
+    var pct = total ? Math.round((done / total) * 95) : 10;
+    return '<div class="upload-progress">'
+      + '<div class="progress-phase"><span class="spinner"></span>'
+      + '<span>Transcribing ' + done + ' of ' + total + ' pages…</span></div>'
+      + '<div class="progress-track"><div class="progress-fill" style="width:'
+      + pct + '%"></div></div></div>';
+  }
+
+  function showSessionResult() {
+    var ids = pages.map(function (p) { return p.taskId; }).join(',');
+    fetch('/notebook-session-result?ids=' + encodeURIComponent(ids))
+      .then(function (r) { return r.text(); })
+      .then(function (html) {
+        result.innerHTML = html;
+        waiting = false;
+        syncButtons();
+      })
+      .catch(function (err) {
+        result.innerHTML = '';
+        say('Could not load the transcription: ' + err, true);
+        waiting = false;
+        syncButtons();
+      });
+  }
+
+  function waitForAll() {
+    waiting = true;
+    syncButtons();
+    var ids = pages.map(function (p) { return p.taskId; }).join(',');
+    function tick() {
+      fetch('/notebook-session-status?ids=' + encodeURIComponent(ids))
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          if (data.status === 'pending') {
+            result.innerHTML = waitingHtml(data.done, data.total);
+            setTimeout(tick, 750);
+            return;
+          }
+          if (data.error) {
+            say(data.error, true);
+            waiting = false;
+            syncButtons();
+            return;
+          }
+          showSessionResult();
+        })
+        .catch(function (err) {
+          say('Could not check transcription status: ' + err, true);
+          waiting = false;
+          syncButtons();
+        });
+    }
+    result.innerHTML = waitingHtml(0, pages.length);
+    tick();
+  }
+
+  function acceptFrame() {
+    if (!currentBlob || posting) return Promise.resolve(false);
+    if (atLimit()) {
+      say('That is the limit (' + MAX_PAGES + ' pages). Press Done.', true);
+      return Promise.resolve(false);
+    }
+    posting = true;
+    var blob = currentBlob;
+    currentBlob = null;
+    var thumb = canvas.toDataURL('image/jpeg', 0.45);
+    syncButtons();
+    var fd = new FormData();
+    fd.append('frame', blob, 'capture.jpg');
+    return fetch('/process/notebook-page', { method: 'POST', body: fd })
+      .then(function (r) { return r.json().then(function (data) { return { okHttp: r.ok, data: data }; }); })
+      .then(function (res) {
+        posting = false;
+        if (!res.data || !res.data.ok) {
+          currentBlob = blob;
+          say((res.data && res.data.error) || 'Could not send the page.', true);
+          syncButtons();
+          return false;
+        }
+        pages.push({
+          taskId: res.data.task_id,
+          n: pages.length + 1,
+          thumb: thumb,
+          status: 'pending'
+        });
+        renderStrip();
+        startPolling();
+        syncButtons();
+        return true;
+      })
+      .catch(function (err) {
+        posting = false;
+        currentBlob = blob;
+        say('Could not send the page: ' + err, true);
+        syncButtons();
+        return false;
+      });
   }
 
   function start() {
@@ -1309,12 +1506,14 @@ _CAPTURE_JS = """
     }).then(function () {
       var t = stream.getVideoTracks()[0];
       var st = t.getSettings ? t.getSettings() : {};
+      cameraReady = true;
+      syncButtons();
       say('Camera ready — ' + (st.width || video.videoWidth) + '×'
           + (st.height || video.videoHeight)
-          + '. Fill the frame with the page, hold steady, then capture.');
-      shoot.disabled = false;
+          + '. Fill the frame, capture, then Next page. Press Done after the last page.');
     }).catch(function (err) {
-      shoot.disabled = true;
+      cameraReady = false;
+      syncButtons();
       if (err && (err.name === 'NotAllowedError' || err.name === 'SecurityError')) {
         say('Camera permission was denied. Allow camera access for this site in your '
             + 'browser settings, then reload this page.', true);
@@ -1330,36 +1529,63 @@ _CAPTURE_JS = """
 
   shoot.addEventListener('click', function () {
     if (!video.videoWidth) { say('Camera is still starting up — try again.', true); return; }
+    if (atLimit()) {
+      say('That is the limit (' + MAX_PAGES + ' pages). Press Done.', true);
+      return;
+    }
     canvas.width  = video.videoWidth;
     canvas.height = video.videoHeight;
     canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
     canvas.toBlob(function (blob) {
       if (!blob) { say('Could not read the frame. Try again.', true); return; }
-      var dt = new DataTransfer();
-      dt.items.add(new File([blob], 'capture.jpg', { type: 'image/jpeg' }));
-      input.files = dt.files;
+      currentBlob = blob;
       canvas.style.display = 'block';
       video.style.display  = 'none';
-      shoot.style.display  = 'none';
-      retake.style.display = 'inline-flex';
-      send.disabled = false;
+      syncButtons();
       say('Captured at ' + canvas.width + '×' + canvas.height + ' ('
-          + Math.round(blob.size / 1024) + ' KB). Readable? Transcribe it, or retake.');
+          + Math.round(blob.size / 1024) + ' KB). Readable? Next page, Done, or retake.');
     }, 'image/jpeg', __QUALITY__);
   });
 
   retake.addEventListener('click', function () {
-    input.value = '';
-    canvas.style.display = 'none';
-    video.style.display  = 'block';
-    retake.style.display = 'none';
-    shoot.style.display  = 'inline-flex';
-    send.disabled = true;
+    resumeLive();
     say('Retaking — line up the page and capture again.');
+  });
+
+  nextBtn.addEventListener('click', function () {
+    if (posting || waiting || !currentBlob) return;
+    acceptFrame().then(function (ok) {
+      if (!ok) return;
+      resumeLive();
+      var n = pages.length;
+      say('Page ' + n + ' is transcribing. Line up the next page and capture.');
+    });
+  });
+
+  doneBtn.addEventListener('click', function () {
+    if (posting || waiting) return;
+    waiting = true;
+    syncButtons();
+    var pending = currentBlob ? acceptFrame() : Promise.resolve(true);
+    pending.then(function (ok) {
+      if (!ok) { waiting = false; syncButtons(); return; }
+      if (!pages.length) {
+        waiting = false;
+        syncButtons();
+        say('Capture a page first.', true);
+        return;
+      }
+      resumeLive();
+      say(pages.length === 1
+        ? 'Transcribing the page…'
+        : 'Finishing ' + pages.length + ' pages…');
+      waitForAll();
+    });
   });
 
   // Release the camera so the hardware indicator light goes out.
   window.addEventListener('pagehide', stop);
+  syncButtons();
   start();
 })();
 """
@@ -1375,7 +1601,7 @@ def capture_card():
     return A(
         Span("📷", cls="capture-link-icon"),
         Span("Notebook to Text", style="font-weight:600;"),
-        Span("transcribe handwriting with your camera",
+        Span("transcribe one or more notebook pages with your camera",
              cls="capture-link-sub"),
         Span("→", style="margin-left:auto;color:var(--text-muted);"),
         href="/capture",
@@ -1384,13 +1610,19 @@ def capture_card():
 
 
 def capture_page():
-    """Full camera capture page: live preview, capture, retake, transcribe."""
+    """Full camera capture page: live preview, multi-page session, transcribe."""
+    js = (
+        _CAPTURE_JS
+        .replace("__QUALITY__", str(CAPTURE_JPEG_QUALITY))
+        .replace("__MAX_PAGES__", str(NOTEBOOK_SESSION_MAX_PAGES))
+    )
     return Titled(
         "Notebook to Text",
         Div(
             A("← Back", href="/", cls="logout-link"),
-            P("Hold one page or an open two-page spread up to the camera. "
-              "Fill the frame, avoid glare, and keep the page flat.",
+            P("Capture each page as you go. Transcription starts when you accept "
+              "a page, so you only wait after Done. An open two-page spread still "
+              "counts as one capture.",
               cls="page-subtitle"),
             Div(
                 Video(
@@ -1401,68 +1633,117 @@ def capture_page():
                     cls="cap-media",
                 ),
                 Canvas(id="cap-canvas", cls="cap-media", style="display:none;"),
+                Div(id="cap-pages", cls="cap-pages", hidden=True),
                 P("Starting camera…", id="cap-status", cls="cap-status"),
-                Form(
-                    Input(type="file", name="frame", id="cap-frame",
-                          accept="image/jpeg", style="display:none;"),
-                    Div(
-                        Button("📷 Capture", type="button", id="cap-shoot",
-                               disabled=True, cls="button"),
-                        Button("↺ Retake", type="button", id="cap-retake",
-                               cls="button", style="display:none;background:var(--orange);"),
-                        Button("✨ Transcribe", type="submit", id="cap-send",
-                               disabled=True, cls="button",
-                               style="background:var(--green);"),
-                        Div(
-                            Span(cls="spinner"),
-                            # Transcription runs ~20s at MEDIUM thinking. Saying so stops
-                            # the wait reading as a hang.
-                            Span("Transcribing… this takes about 20 seconds"),
-                            id="cap-indicator",
-                            cls="htmx-indicator",
-                            style=("color:var(--primary);font-size:0.8rem;"
-                                   "font-weight:500;gap:0.35rem;"),
-                        ),
-                        cls="action-row",
-                    ),
-                    hx_post="/process/notebook-ocr",
-                    hx_target="#capture-result",
-                    hx_swap="innerHTML",
-                    hx_indicator="#cap-indicator",
-                    # Without this a second tap during the long wait bills a second capture.
-                    hx_disabled_elt="#cap-send, #cap-retake",
-                    hx_encoding="multipart/form-data",
+                Div(
+                    Button("📷 Capture", type="button", id="cap-shoot",
+                           disabled=True, cls="button"),
+                    Button("↺ Retake", type="button", id="cap-retake",
+                           cls="button",
+                           style="display:none;background:var(--orange);"),
+                    Button("Next page", type="button", id="cap-next",
+                           cls="button", style="display:none;"),
+                    Button("Done", type="button", id="cap-done",
+                           cls="button",
+                           style="display:none;background:var(--green);"),
+                    cls="action-row",
                 ),
                 cls="url-card",
             ),
             Div(id="capture-result"),
-            Script(_CAPTURE_JS.replace("__QUALITY__", str(CAPTURE_JPEG_QUALITY))),
+            Script(js),
             cls="app-wrap",
         ),
     )
 
 
-def notebook_ocr_result(results):
-    """Result panel for a camera capture: editable transcription plus a copy button."""
-    text = results["full_text"]
-    in_tok = results.get("total_input_tokens", 0)
-    out_tok = results.get("total_output_tokens", 0)
+def _copy_onclick(js_text_expr: str, label: str) -> str:
+    """Clipboard copy that reads live textarea values so edits are kept."""
+    return (
+        f"var t={js_text_expr};"
+        "var btn=this;"
+        "navigator.clipboard.writeText(t).then(function(){"
+        "btn.textContent='✅ Copied!';btn.style.background='var(--green)';"
+        f"setTimeout(function(){{btn.textContent={json.dumps(label)};"
+        "btn.style.background='';}},2000);});"
+    )
+
+
+def notebook_session_result(pages):
+    """Editable transcriptions for every accepted camera frame, plus Copy all.
+
+    `pages` is the list produced by `collect_notebook_pages` once every task is
+    terminal. Copy reads the textareas so manual fixes survive.
+    """
+    ok_pages = [p for p in pages if p.get("ok")]
+    all_text = "\n".join(p.get("full_text") or "" for p in ok_pages)
+    in_tok = sum(p.get("total_input_tokens") or 0 for p in ok_pages)
+    out_tok = sum(p.get("total_output_tokens") or 0 for p in ok_pages)
+    times = [p.get("processing_time") or 0 for p in ok_pages]
+    wall = max(times) if times else 0
+    multi = len(pages) > 1
+    copy_label = "📋 Copy all" if multi else "📋 Copy"
+    break_js = json.dumps("\n" + NOTEBOOK_PAGE_BREAK + "\n")
+    join_js = (
+        "Array.prototype.map.call(document.querySelectorAll('.cap-textarea'),"
+        f"function(el){{return el.value;}}).join({break_js})"
+    )
+
+    page_blocks = []
+    for p in pages:
+        n = p.get("n")
+        textarea_id = "cap-text" if not multi and n == 1 else f"cap-text-{n}"
+        head_bits = [Span(f"Page {n}", cls="cap-page-result-title")]
+        if not p.get("ok"):
+            head_bits.append(
+                Span(p.get("error") or "Transcription failed.", cls="cap-page-error")
+            )
+        elif multi:
+            head_bits.append(
+                Button(
+                    "📋 Copy",
+                    type="button",
+                    onclick=_copy_onclick(
+                        f"document.getElementById({json.dumps(textarea_id)}).value",
+                        "📋 Copy",
+                    ),
+                    cls="button cap-page-copy",
+                )
+            )
+        page_blocks.append(
+            Div(
+                Div(*head_bits, cls="cap-page-result-head"),
+                Textarea(
+                    p.get("full_text") or "",
+                    id=textarea_id,
+                    cls="cap-textarea",
+                    spellcheck="false",
+                ),
+                cls="cap-page-result" + ("" if multi else " cap-page-result-solo"),
+            )
+        )
 
     return Div(
         Div(
             Div(
+                P("Pages", cls="metric-label"),
+                P(f"{len(pages)}", cls="metric-value"),
+                cls="metric-box",
+            ),
+            Div(
                 P("Characters", cls="metric-label"),
-                P(f"{len(text):,}", cls="metric-value"),
+                P(f"{len(all_text):,}", cls="metric-value"),
                 cls="metric-box",
             ),
             Div(
                 P("Words", cls="metric-label"),
-                P(f"{len(text.split()):,}", cls="metric-value"),
+                P(f"{len(all_text.split()) if all_text.strip() else 0:,}",
+                  cls="metric-value"),
                 cls="metric-box",
             ),
             Div(
                 P("Time", cls="metric-label"),
-                P(f"{results.get('processing_time', 0):.1f}s", cls="metric-value"),
+                P(f"{wall:.1f}s", cls="metric-value"),
                 cls="metric-box",
             ),
             Div(
@@ -1475,24 +1756,15 @@ def notebook_ocr_result(results):
         ),
         Div(
             Button(
-                "📋 Copy",
+                copy_label,
                 type="button",
-                # Copied straight from the textarea rather than fetched from a download
-                # route: one notebook page is a few KB, well under any clipboard limit,
-                # and this keeps edits made here in the copied text.
-                onclick=(
-                    "var t=document.getElementById('cap-text').value;"
-                    "navigator.clipboard.writeText(t).then(()=>{"
-                    "this.textContent='✅ Copied!';this.style.background='var(--green)';"
-                    "setTimeout(()=>{this.textContent='📋 Copy';"
-                    "this.style.background='';},2000);});"
-                ),
+                onclick=_copy_onclick(join_js, copy_label),
                 cls="button",
             ),
             cls="action-row",
         ),
         P("Editable — fix any misreadings before copying. Uncertain words are marked [?].",
           style="font-size:0.78rem;color:var(--text-muted);margin-bottom:0.35rem;"),
-        Textarea(text, id="cap-text", cls="cap-textarea", spellcheck="false"),
+        *page_blocks,
         cls="result-area",
     )

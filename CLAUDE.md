@@ -231,16 +231,20 @@ URL_PDF_CHROMIUM_EXECUTABLE = ""     # leave empty to use playwright's own binar
 
 Transcribes a handwritten paper notebook held up to a webcam or tablet camera. Solves the
 "photo on phone → cloud sync → download → attach to a chat" round trip: open `/capture`,
-hold the page up, two clicks, text on the clipboard.
+hold each page up, Capture then Next page, Done, text on the clipboard.
 
 **Routes:**
-- `GET /capture` → the capture page (live preview, Capture / Retake / Transcribe)
-- `POST /process/notebook-ocr` → multipart frame in, HTML result fragment out
+- `GET /capture` → the capture page (live preview, Capture / Retake / Next page / Done)
+- `POST /process/notebook-page` → one frame in, JSON `{ok, task_id}` out; OCR starts in
+  the background so the user can line up the next page
+- `GET /notebook-page-status/{task_id}` → JSON chip status (`pending` / `done` / `error`)
+- `GET /notebook-session-status?ids=` → JSON summary of every accepted page
+- `GET /notebook-session-result?ids=` → HTML result panel once every page is terminal
 
 **Pipeline:** `getUserMedia` preview → `<canvas>` frame grab at native resolution →
-`toBlob` JPEG (`CAPTURE_JPEG_QUALITY`) → stuffed into a hidden file input via `DataTransfer`
-so HTMX posts it as a normal multipart form → `ocr_image_bytes()` with the handwriting
-system instruction → editable textarea + Copy button.
+`toBlob` JPEG (`CAPTURE_JPEG_QUALITY`) → **Next page** or **Done** POSTs the blob and
+starts `ocr_image_bytes()` as a `tasks.start_task` job. Done polls until every task is
+terminal, then renders per-page textareas + Copy all (joined with `--- page break ---`).
 
 **Design decisions worth preserving:**
 - **Nothing touches disk.** Unlike the upload flow, the frame and the transcription are
@@ -251,8 +255,13 @@ system instruction → editable textarea + Copy button.
 - **Camera lives on its own page, not the index.** An embedded preview on `/` would trigger
   a camera permission prompt on every visit for every unrelated PDF task.
 - **Copy reads from the textarea**, deliberately deviating from the "fetch text from a
-  download route" convention below. That rule exists for large PDF transcriptions; one
-  notebook page is a few KB, and reading the textarea preserves the user's manual edits.
+  download route" convention below. That rule exists for large PDF transcriptions; a
+  notebook session is a few KB, and reading the textareas preserves the user's manual
+  edits. Copy all joins captures with `--- page break ---`.
+- **OCR starts on Next page / Done, not on Capture.** Capture only freezes the frame so
+  Retake is free. The accepted blob is posted and `tasks.start_task` runs while the
+  camera goes live again. Tasks are not popped after the first read, so adding another
+  page and pressing Done again still sees pages 1–N.
 - **Prompt is tuned against two specific failure modes** — the model double-spacing output
   because it reads the notebook's printed ruled lines as blank lines, and dropping the
   indentation of nested lines. Both regressed visibly when the prompt was looser; keep the

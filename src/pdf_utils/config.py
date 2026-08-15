@@ -91,6 +91,12 @@ HANDWRITING_OCR_MODEL = "gemini-flash-latest"
 # predate the current stub — re-measure before trusting them as this model's scores.
 HANDWRITING_THINKING_LEVEL = "LOW"
 CAPTURE_JPEG_QUALITY = 0.92  # Canvas toBlob quality for camera frames (0.0-1.0)
+# Joiner between accepted camera frames in Copy all. Same marker the handwriting
+# prompt already uses between the two sides of an open spread.
+NOTEBOOK_PAGE_BREAK = "--- page break ---"
+# Hard cap on frames in one /capture session. Each frame is held only as a
+# thumbnail in the browser; the server keeps the OCR task in memory.
+NOTEBOOK_SESSION_MAX_PAGES = 30
 
 # Async OCR settings
 OCR_CONCURRENT_REQUESTS = 50  # Max concurrent LLM requests
