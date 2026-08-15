@@ -14,9 +14,11 @@ load_dotenv(project_root / ".env")
 
 from starlette.testclient import TestClient
 
+from fasthtml.common import to_xml
 from web_app.app import create_app
 from web_app.core import tasks
 from web_app.routes.capture import collect_notebook_pages, parse_task_ids
+from web_app.ui.components import notebook_session_result
 
 
 def _client():
@@ -125,6 +127,19 @@ def test_one_pending_keeps_session_pending():
         tasks.pop_task(pending)
 
 
+def test_result_copy_buttons_call_page_helper():
+    html = to_xml(notebook_session_result([
+        {"n": 1, "ok": True, "full_text": "aaa", "processing_time": 1,
+         "total_input_tokens": 1, "total_output_tokens": 1, "error": ""},
+        {"n": 2, "ok": True, "full_text": "bbb", "processing_time": 1,
+         "total_input_tokens": 1, "total_output_tokens": 1, "error": ""},
+    ]))
+    assert "copyCapText(this)" in html
+    assert "copyCapText(this" in html and "cap-text-1" in html
+    assert "}},2000)" not in html
+    assert "navigator.clipboard" not in html
+
+
 def test_capture_page_has_session_controls():
     with _client() as client:
         _login(client)
@@ -137,6 +152,8 @@ def test_capture_page_has_session_controls():
         assert "/process/notebook-page" in body
         assert "/process/notebook-ocr" not in body
         assert "Next page" in body
+        assert "window.copyCapText" in body
+        assert "--- page break ---" in body
 
 
 def test_accept_page_requires_frame():

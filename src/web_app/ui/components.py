@@ -1283,6 +1283,7 @@ _CAPTURE_JS = """
   var pollTimer = null;
   var pages = [];
   var MAX_PAGES = __MAX_PAGES__;
+  var PAGE_BREAK = __PAGE_BREAK__;
 
   function say(msg, isError) {
     status.textContent = msg;
@@ -1562,6 +1563,29 @@ _CAPTURE_JS = """
     });
   });
 
+  // Result HTML is injected later; keep this on window so the Copy buttons
+  // can call it without stuffing JS into an onclick attribute.
+  window.copyCapText = function (btn, onlyId) {
+    var nodes = onlyId
+      ? [document.getElementById(onlyId)]
+      : document.querySelectorAll('.cap-textarea');
+    var parts = [];
+    for (var i = 0; i < nodes.length; i++) {
+      if (nodes[i]) parts.push(nodes[i].value);
+    }
+    var prev = btn.textContent;
+    navigator.clipboard.writeText(parts.join('\\n' + PAGE_BREAK + '\\n')).then(function () {
+      btn.textContent = '✅ Copied!';
+      btn.style.background = 'var(--green)';
+      setTimeout(function () {
+        btn.textContent = prev;
+        btn.style.background = '';
+      }, 2000);
+    }).catch(function (err) {
+      say('Could not copy: ' + (err && err.message ? err.message : err), true);
+    });
+  };
+
   doneBtn.addEventListener('click', function () {
     if (posting || waiting) return;
     waiting = true;
@@ -1615,6 +1639,7 @@ def capture_page():
         _CAPTURE_JS
         .replace("__QUALITY__", str(CAPTURE_JPEG_QUALITY))
         .replace("__MAX_PAGES__", str(NOTEBOOK_SESSION_MAX_PAGES))
+        .replace("__PAGE_BREAK__", json.dumps(NOTEBOOK_PAGE_BREAK))
     )
     return Titled(
         "Notebook to Text",
@@ -1657,18 +1682,6 @@ def capture_page():
     )
 
 
-def _copy_onclick(js_text_expr: str, label: str) -> str:
-    """Clipboard copy that reads live textarea values so edits are kept."""
-    return (
-        f"var t={js_text_expr};"
-        "var btn=this;"
-        "navigator.clipboard.writeText(t).then(function(){"
-        "btn.textContent='✅ Copied!';btn.style.background='var(--green)';"
-        f"setTimeout(function(){{btn.textContent={json.dumps(label)};"
-        "btn.style.background='';}},2000);});"
-    )
-
-
 def notebook_session_result(pages):
     """Editable transcriptions for every accepted camera frame, plus Copy all.
 
@@ -1683,11 +1696,6 @@ def notebook_session_result(pages):
     wall = max(times) if times else 0
     multi = len(pages) > 1
     copy_label = "📋 Copy all" if multi else "📋 Copy"
-    break_js = json.dumps("\n" + NOTEBOOK_PAGE_BREAK + "\n")
-    join_js = (
-        "Array.prototype.map.call(document.querySelectorAll('.cap-textarea'),"
-        f"function(el){{return el.value;}}).join({break_js})"
-    )
 
     page_blocks = []
     for p in pages:
@@ -1703,10 +1711,7 @@ def notebook_session_result(pages):
                 Button(
                     "📋 Copy",
                     type="button",
-                    onclick=_copy_onclick(
-                        f"document.getElementById({json.dumps(textarea_id)}).value",
-                        "📋 Copy",
-                    ),
+                    onclick=f"copyCapText(this,{json.dumps(textarea_id)})",
                     cls="button cap-page-copy",
                 )
             )
@@ -1758,7 +1763,7 @@ def notebook_session_result(pages):
             Button(
                 copy_label,
                 type="button",
-                onclick=_copy_onclick(join_js, copy_label),
+                onclick="copyCapText(this)",
                 cls="button",
             ),
             cls="action-row",
