@@ -37,10 +37,12 @@ ALLOWED_EXTENSIONS = {'.pdf', '.epub', '.jpg', '.jpeg', '.png', '.webp', '.ppt',
 # LibreOffice conversion settings
 LIBREOFFICE_TIMEOUT = 60  # seconds to wait for soffice conversion
 
-# Pandoc (Markdown -> PDF via typst) conversion settings
-PANDOC_TIMEOUT = 60  # seconds to wait for pandoc conversion
-PANDOC_MAIN_FONT = "Noto Sans"
-PANDOC_MONO_FONT = "Noto Sans Mono"
+# Markdown -> PDF via vendored md-render-pipeline/render.sh
+MD_RENDER_TIMEOUT = int(_os.getenv("MD_RENDER_TIMEOUT", "120"))
+MAX_MD_SIZE_MB = int(_os.getenv("MAX_MD_SIZE_MB", "8"))
+MAX_MD_SIZE_BYTES = MAX_MD_SIZE_MB * 1024 * 1024
+# Optional absolute path to render.sh; default is <repo>/md-render-pipeline/render.sh
+MD_RENDER_SCRIPT: str = _os.getenv("MD_RENDER_SCRIPT", "")
 
 # Image conversion settings
 DEFAULT_DPI = 150

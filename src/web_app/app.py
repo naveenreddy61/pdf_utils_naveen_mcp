@@ -1,6 +1,8 @@
 """FastHTML Web Application for PDF Utilities."""
 
 import asyncio
+import os
+import shutil
 import uvicorn
 from fasthtml.common import *
 from starlette.responses import RedirectResponse
@@ -59,6 +61,21 @@ def create_app():
         print(f"Upload directory: {UPLOAD_DIR.resolve()}", flush=True)
         print(f"Upload directory exists: {UPLOAD_DIR.exists()}", flush=True)
         print(f"Static files served from: uploads/", flush=True)
+        try:
+            from web_app.services.md_service import resolve_render_script
+            script = resolve_render_script()
+            print(
+                f"MD renderer: {script} exists={script.is_file()} "
+                f"executable={os.access(script, os.X_OK)}",
+                flush=True,
+            )
+            print(
+                f"MD tools: pandoc={shutil.which('pandoc')} "
+                f"typst={shutil.which('typst')}",
+                flush=True,
+            )
+        except Exception as exc:
+            print(f"MD renderer: probe failed ({exc})", flush=True)
         print("=== STARTUP COMPLETE ===", flush=True)
         asyncio.create_task(daily_cleanup())
     

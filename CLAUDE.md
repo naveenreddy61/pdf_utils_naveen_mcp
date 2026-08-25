@@ -278,22 +278,25 @@ the hardware indicator light goes out.
 
 ## Markdown-to-PDF Conversion (`md_service.py`)
 
-Uploading a `.md` file auto-converts it to PDF via **pandoc** with the **typst** PDF engine, then registers it as a normal `file_type="pdf"` — the full PDF toolset (TOC, text/image extraction, OCR) works on the result immediately. Mirrors the PPTX→PDF conversion pattern in `main.py`'s upload task.
+The home page has a dedicated **Markdown to PDF** card below Notebook OCR. `.md` is **not** accepted on the top drop zone (`POST /upload` tells the user to use the card). The card uses the same click/drop/paste-file + GCS split as other uploads (`POST /process/md-to-pdf` under 5 MB; signed URL above). Conversion is `md-render-pipeline/render.sh` (perl cleanup, optional KaTeX empty-`\sqrt{}`, pandoc GFM + Typst). Result is stored as `file_type="pdf"` and auto-downloaded. Cap: 8 MB (`MAX_MD_SIZE_MB`), timeout 120 s (`MD_RENDER_TIMEOUT`). Path: `MD_RENDER_SCRIPT` or sentinel-bounded repo root (`pyproject.toml` / `.git`). Subprocess: argv, `cwd` = temp dir, SIGTERM then SIGKILL.
 
 **System dependencies (not managed by `uv`):**
-- `pandoc` — install via `apt install pandoc` (already present on the VPS)
-- `typst` CLI — pandoc shells out to it for `--pdf-engine=typst`; **not** available via apt. Install the prebuilt binary:
+- `pandoc` — `apt install pandoc`
+- `typst` CLI — prebuilt binary (not in apt):
   ```bash
   curl -fsSL -o /tmp/typst.tar.xz https://github.com/typst/typst/releases/latest/download/typst-x86_64-unknown-linux-musl.tar.xz
   tar -xf /tmp/typst.tar.xz -C /tmp
   install -m 755 /tmp/typst-x86_64-unknown-linux-musl/typst /usr/local/bin/typst
   ```
-- System fonts — typst has no bundled default font, so `mainfont`/`monofont` must be passed explicitly (`PANDOC_MAIN_FONT` / `PANDOC_MONO_FONT` in `config.py`, default `Noto Sans` / `Noto Sans Mono`). Without a matching installed font, conversion fails with `error: font fallback list must not be empty`.
+- Fonts — pipeline uses Typst-embedded **New Computer Modern** (body + headings) and **New Computer Modern Math**, with JetBrainsMono NF for code (DejaVu Sans Mono fallback). That is the LaTeX Computer Modern look; do not switch headings back to a sans family. `apt-get install -y fonts-dejavu` on a new host for the code fallback. Edit `typst-header.typ` / `render.sh` only to change this style or if a `typst fonts` probe fails.
+- Math auto-fix: `cd md-render-pipeline && npm ci --omit=dev` (katex). Without it, `render.sh` continues and skips the empty-`\sqrt{}` fix.
 
 **Verify:**
 ```bash
 pandoc --version && typst --version
-echo '# test' | pandoc -o /tmp/t.pdf --pdf-engine=typst -V mainfont="Noto Sans"
+./md-render-pipeline/render.sh /tmp/t.md /tmp/t.pdf
+python -c "p=open('/tmp/t.pdf','rb').read(); assert p.startswith(b'%PDF')"
+uv run python tests/test_md_service.py
 ```
 
 ## Prerequisites

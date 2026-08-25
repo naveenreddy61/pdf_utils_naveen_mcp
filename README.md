@@ -13,6 +13,10 @@ A powerful, browser-based application for processing PDF documents and images wi
 - **PDF from a Link**: Paste a URL that points at a PDF (e.g. an NBER or arXiv
   paper) and the server downloads it for you — no save-then-upload round trip.
   The fetched file behaves exactly like an uploaded one.
+- **Markdown to PDF**: Dedicated card on the home page. Drop or pick a `.md`
+  file (GFM tables and `$...$` math, max 8 MB). The server runs
+  `md-render-pipeline/render.sh` (Pandoc + Typst) and downloads a styled PDF.
+  Same GCS/multipart upload path as other files.
 
 ### Image Processing
 - **Multi-Format Support**: Upload and process JPG, PNG, WEBP images
@@ -421,6 +425,18 @@ pdf-web-app --port 9000
 - File must be under 100MB
 - Or modify `MAX_FILE_SIZE_MB` in config.py
 
+**Problem**: Markdown to PDF fails (`Markdown renderer not found` / conversion error)
+**Solution**:
+```bash
+# Pipeline + fonts + math auto-fix (once per host)
+cd md-render-pipeline && npm ci --omit=dev
+typst fonts | grep -E 'New Computer Modern|JetBrainsMono NF|DejaVu Sans Mono'
+# Body/headings use Typst-embedded New Computer Modern (LaTeX-like).
+# Optional: apt-get install -y fonts-dejavu  # code fallback
+./md-render-pipeline/render.sh /tmp/t.md /tmp/t.pdf
+```
+Markdown files go through the **Markdown to PDF** card at the bottom of `/`, not the top drop zone. Cap is 8 MB (`MAX_MD_SIZE_MB`).
+
 **Problem**: "No API key found" warning
 **Solution**:
 ```bash
@@ -528,6 +544,7 @@ pdf-utils-web/
 │   └── ocr_cache.db           # OCR results cache
 ├── uploads/                    # Uploaded files
 ├── tests/                      # Test suite
+├── md-render-pipeline/         # Vendored Markdown → PDF (render.sh)
 ├── app.py                      # Local dev entry point
 ├── pyproject.toml              # Project configuration
 ├── README.md                   # This file
@@ -548,6 +565,7 @@ uv run python -m web_app.cli
 
 # Run tests
 uv run python tests/test_ocr_service.py
+uv run python tests/test_md_service.py   # or: make test-md
 
 # Add a dependency
 uv add package_name

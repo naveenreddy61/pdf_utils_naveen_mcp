@@ -3,6 +3,7 @@
 import asyncio
 import uuid
 from datetime import datetime
+from pathlib import Path
 from fasthtml.common import *
 from starlette.requests import Request
 from starlette.responses import JSONResponse, HTMLResponse
@@ -10,7 +11,7 @@ from pdf_utils.config import (
     UPLOAD_DIR, MAX_FILE_SIZE_BYTES, MAX_FILE_SIZE_MB, ALLOWED_EXTENSIONS,
     GCS_BUCKET_NAME, GCS_CREDENTIALS_FILE, GCS_SIGNED_URL_EXPIRY_MINUTES,
     GCS_DELETE_AFTER_DOWNLOAD, MAX_FILE_SIZE_GCS_BYTES, MAX_FILE_SIZE_GCS_MB,
-    EFFECTIVE_MAX_UPLOAD_MB,
+    EFFECTIVE_MAX_UPLOAD_MB, MAX_MD_SIZE_BYTES, MAX_MD_SIZE_MB,
 )
 from web_app.core.database import (
     FileRecord, get_file_info, update_last_accessed, insert_file_record
@@ -24,6 +25,7 @@ from web_app.ui.components import (
     upload_form, file_info_display, operation_buttons,
     error_message, upload_progress_poll, upload_progress_status,
     url_input_form, auto_download_script, capture_card, pdf_url_form,
+    md_to_pdf_card,
 )
 
 # Map MIME types / extensions to internal file_type labels
@@ -42,7 +44,8 @@ _EXT_MAP = {
     ".webp": ("image/webp",                 "image"),
     ".ppt":  ("application/vnd.ms-powerpoint", "pptx"),
     ".pptx": ("application/vnd.openxmlformats-officedocument.presentationml.presentation", "pptx"),
-    ".md":   ("text/markdown",                 "md"),
+    ".md":        ("text/markdown",                 "md"),
+    ".markdown":  ("text/markdown",                 "md"),
 }
 
 # ── In-memory task store (per-process; fine for single-worker deployments) ───
@@ -187,6 +190,13 @@ async def _run_gcs_upload_task(
             except Exception as del_err:
                 print(f"Warning: could not delete GCS temp object: {del_err}")
 
+        if file_type == "md" and len(content) > MAX_MD_SIZE_BYTES:
+            _tasks[task_id] = {
+                "phase": "error", "pct": 0,
+                "error": f"Markdown is too large (max {MAX_MD_SIZE_MB} MB).",
+            }
+            return
+
         await _run_upload_task(task_id, content, original_filename, file_type)
 
     except Exception as exc:
@@ -236,13 +246,14 @@ def setup_routes(app, rt):
             Div(
                 A("Logout", href="/logout", cls="logout-link") if LOGIN_PASSWORD else None,
                 P(
-                    f"PDF · PPT · MD · Images · URL to Markdown · Camera  ·  max {EFFECTIVE_MAX_UPLOAD_MB} MB  ·  files kept 30 days",
+                    f"PDF · PPT · Images · URL to Markdown · Camera · Markdown to PDF  ·  max {EFFECTIVE_MAX_UPLOAD_MB} MB  ·  files kept 30 days",
                     cls="page-subtitle",
                 ),
                 upload_form(),
                 pdf_url_form(),
                 url_input_form(),
                 capture_card(),
+                md_to_pdf_card(),
                 cls="app-wrap",
             )
         )
@@ -264,9 +275,12 @@ def setup_routes(app, rt):
             type_info = _file_type_from_name(filename_lower)
             if not type_info:
                 return error_message(
-                    "Unsupported file type. Allowed: PDF, EPUB, JPG, JPEG, PNG, WEBP, PPT, PPTX, MD."
+                    "Unsupported file type. Allowed: PDF, EPUB, JPG, JPEG, PNG, WEBP, PPT, PPTX."
                 )
             _, file_type = type_info
+
+            if file_type == "md":
+                return error_message("Use the Markdown to PDF card below.")
 
             content = await upload_field.read()
 
@@ -357,6 +371,47 @@ def setup_routes(app, rt):
 
         return upload_progress_poll(task_id)
 
+    # ── Markdown to PDF (dedicated card; same task pipeline as /upload) ──────
+
+    @rt('/process/md-to-pdf', methods=['POST'])
+    async def md_to_pdf(request: Request):
+        """Multipart ingest for the Markdown-to-PDF card (files ≤ GCS threshold).
+
+        Larger Markdown goes through /api/request-upload like every other type.
+        """
+        try:
+            form = await request.form()
+            upload_field = form.get('file')
+
+            if not upload_field or not hasattr(upload_field, 'filename'):
+                return error_message("No file received – please select a Markdown file.")
+
+            type_info = _file_type_from_name(upload_field.filename.lower())
+            if not type_info or type_info[1] != "md":
+                return error_message("Please choose a Markdown (.md) file.")
+
+            content = await upload_field.read()
+            if len(content) == 0:
+                return error_message("File is empty.")
+            if len(content) > MAX_MD_SIZE_BYTES:
+                return error_message(
+                    f"Markdown is too large (max {MAX_MD_SIZE_MB} MB)."
+                )
+
+            task_id = uuid.uuid4().hex[:12]
+            _tasks[task_id] = {"phase": "Starting…", "pct": 5}
+            asyncio.create_task(
+                _run_upload_task(task_id, content, upload_field.filename, "md")
+            )
+            asyncio.get_event_loop().call_later(
+                300, lambda: _tasks.pop(task_id, None)
+            )
+            return upload_progress_poll(task_id)
+
+        except Exception as exc:
+            import traceback; traceback.print_exc()
+            return error_message(f"Upload error: {exc}")
+
     # ── Direct-to-cloud upload (files too big for the proxy) ─────────────────
     # Used by upload_form()'s JS only when GCS is configured and the file
     # exceeds GCS_DIRECT_THRESHOLD_BYTES; everything smaller stays on /upload.
@@ -394,7 +449,12 @@ def setup_routes(app, rt):
                 status_code=413,
             )
 
-        expected_content_type, _ = type_info
+        expected_content_type, file_type = type_info
+        if file_type == "md" and size > MAX_MD_SIZE_BYTES:
+            return JSONResponse(
+                {"error": f"Markdown is too large (max {MAX_MD_SIZE_MB} MB)."},
+                status_code=413,
+            )
         try:
             from web_app.services.gcs_service import generate_upload_signed_url
             signed_url, gcs_object_name = await asyncio.to_thread(

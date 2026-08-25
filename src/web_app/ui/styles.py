@@ -127,9 +127,14 @@ main > h1, main.container > h1 {
 .file-label-btn:hover { background: var(--primary-hover); }
 
 /* HTMX request indicator */
-#upload-indicator { display: none; align-items: center; gap: 0.5rem; margin-top: 0.75rem;
+#upload-indicator, #md-to-pdf-indicator { display: none; align-items: center; gap: 0.5rem; margin-top: 0.75rem;
   font-size: 0.875rem; color: var(--primary); font-weight: 500; }
-.htmx-request #upload-indicator { display: flex; }
+.htmx-request #upload-indicator, .htmx-request #md-to-pdf-indicator { display: flex; }
+
+.url-card .upload-zone {
+  padding: 1.25rem 1rem;
+  background: var(--surface-alt);
+}
 
 /* ── Upload processing progress (polling) ─────────────────── */
 .upload-progress {

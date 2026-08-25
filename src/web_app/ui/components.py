@@ -8,6 +8,7 @@ from pdf_utils.config import (
     NOTEBOOK_PAGE_BREAK,
     NOTEBOOK_SESSION_MAX_PAGES,
     GCS_ENABLED, GCS_DIRECT_THRESHOLD_BYTES, EFFECTIVE_MAX_UPLOAD_MB,
+    MAX_MD_SIZE_BYTES, MAX_MD_SIZE_MB,
 )
 
 
@@ -17,15 +18,16 @@ from pdf_utils.config import (
 # and the client-side pre-check, so a drop of the wrong type fails instantly
 # instead of after a round trip.
 UPLOAD_EXTENSIONS = [
-    ".pdf", ".epub", ".jpg", ".jpeg", ".png", ".webp", ".ppt", ".pptx", ".md",
+    ".pdf", ".epub", ".jpg", ".jpeg", ".png", ".webp", ".ppt", ".pptx",
 ]
+MD_UPLOAD_EXTENSIONS = [".md", ".markdown"]
 
 _UPLOAD_JS = """
 (function () {
-  var zone  = document.getElementById('upload-zone');
-  var input = document.getElementById('upload-input');
-  var err   = document.getElementById('upload-error');
-  var out   = document.getElementById('upload-result');
+  var zone  = document.getElementById('__ZONE_ID__');
+  var input = document.getElementById('__INPUT_ID__');
+  var err   = document.getElementById('__ERROR_ID__');
+  var out   = document.getElementById('__RESULT_ID__');
   if (!zone || !input) return;
   var ACCEPT    = __ACCEPT__;
   var GCS       = __GCS__;          // is the direct-to-cloud route available?
@@ -36,10 +38,16 @@ _UPLOAD_JS = """
   function fail(msg) { err.textContent = msg; err.style.display = 'block'; }
   function clearErr() { err.textContent = ''; err.style.display = 'none'; }
 
-  function accepted(file) {
+  function fileExt(file) {
     var name = (file.name || '').toLowerCase();
     var dot  = name.lastIndexOf('.');
-    var ext  = dot === -1 ? '' : name.slice(dot);
+    return dot === -1 ? '' : name.slice(dot);
+  }
+  function matchesAccept(file) {
+    return ACCEPT.indexOf(fileExt(file)) !== -1;
+  }
+  function accepted(file) {
+    var ext = fileExt(file);
     if (ACCEPT.indexOf(ext) === -1) {
       fail((ext ? ext + ' files are' : 'That file is') + ' not supported. Accepted: '
            + ACCEPT.join(' '));
@@ -163,7 +171,7 @@ _UPLOAD_JS = """
   // Whole card opens the dialog. The guard stops the programmatic input.click()
   // from bubbling back into this handler.
   zone.addEventListener('click', function (e) {
-    if (e.target.closest('#upload-input, .file-label-btn')) return;
+    if (e.target.closest('#__INPUT_ID__, .file-label-btn')) return;
     input.click();
   });
 
@@ -193,7 +201,11 @@ _UPLOAD_JS = """
 
   document.addEventListener('paste', function (e) {
     var f = e.clipboardData && e.clipboardData.files && e.clipboardData.files[0];
-    if (f) { e.preventDefault(); send(f); }
+    // Leave files this zone does not accept for the other zone's listener.
+    if (!f || !matchesAccept(f)) return;
+    e.preventDefault();
+    if (!accepted(f)) return;
+    send(f);
   });
 })();
 """
@@ -235,7 +247,7 @@ def upload_form():
                       **{"for": "upload-input"}),
                 P("or drop a file here · or paste one",
                   cls="upload-hint"),
-                P(f"PDF · EPUB · PPT · MD · JPG · PNG · WEBP  ·  max {EFFECTIVE_MAX_UPLOAD_MB} MB",
+                P(f"PDF · EPUB · PPT · JPG · PNG · WEBP  ·  max {EFFECTIVE_MAX_UPLOAD_MB} MB",
                   cls="upload-hint"),
                 P("", id="upload-error", cls="upload-error"),
                 id="upload-zone",
@@ -249,15 +261,32 @@ def upload_form():
             ),
         ),
         Div(id="upload-result"),
-        Script(
-            _UPLOAD_JS
-            .replace("__ACCEPT__",    json.dumps(UPLOAD_EXTENSIONS))
-            .replace("__GCS__",       json.dumps(GCS_ENABLED))
-            .replace("__THRESHOLD__", json.dumps(GCS_DIRECT_THRESHOLD_BYTES))
-            .replace("__MAX_BYTES__", json.dumps(EFFECTIVE_MAX_UPLOAD_MB * 1024 * 1024))
-            .replace("__MAX_LABEL__", json.dumps(f"{EFFECTIVE_MAX_UPLOAD_MB} MB"))
+        _upload_script(
+            zone_id="upload-zone",
+            input_id="upload-input",
+            error_id="upload-error",
+            result_id="upload-result",
+            accept=UPLOAD_EXTENSIONS,
+            max_bytes=EFFECTIVE_MAX_UPLOAD_MB * 1024 * 1024,
+            max_label=f"{EFFECTIVE_MAX_UPLOAD_MB} MB",
         ),
         cls="upload-section",
+    )
+
+
+def _upload_script(*, zone_id, input_id, error_id, result_id, accept, max_bytes, max_label):
+    """Shared click/drop/paste + GCS-vs-multipart JS for one upload zone."""
+    return Script(
+        _UPLOAD_JS
+        .replace("__ZONE_ID__",   zone_id)
+        .replace("__INPUT_ID__",  input_id)
+        .replace("__ERROR_ID__",  error_id)
+        .replace("__RESULT_ID__", result_id)
+        .replace("__ACCEPT__",    json.dumps(accept))
+        .replace("__GCS__",       json.dumps(GCS_ENABLED))
+        .replace("__THRESHOLD__", json.dumps(GCS_DIRECT_THRESHOLD_BYTES))
+        .replace("__MAX_BYTES__", json.dumps(max_bytes))
+        .replace("__MAX_LABEL__", json.dumps(max_label))
     )
 
 
@@ -290,8 +319,8 @@ def auto_download_script(stored_filename: str, download_as: str):
     return Script(
         "(function(){"
         "var a=document.createElement('a');"
-        f"a.href='/{stored_filename}';"
-        f"a.download='{download_as}';"
+        f"a.href={json.dumps('/' + stored_filename)};"
+        f"a.download={json.dumps(download_as)};"
         "document.body.appendChild(a);a.click();a.remove();"
         "})();"
     )
@@ -1613,6 +1642,78 @@ _CAPTURE_JS = """
   start();
 })();
 """
+
+
+def md_to_pdf_card():
+    """Dedicated Markdown → PDF drop zone below Notebook OCR.
+
+    Same click/drop/paste-file + GCS split as upload_form(), but only .md and
+    a tighter size cap. Result lands in #md-to-pdf-result.
+    """
+    return Div(
+        Div(
+            Div(cls="or-line"),
+            Span("or convert Markdown to PDF", cls="or-label"),
+            Div(cls="or-line"),
+            cls="or-divider",
+        ),
+        Div(
+            Div(
+                Span("📝", cls="url-section-icon"),
+                Div(
+                    P("Markdown to PDF", cls="url-section-title"),
+                    P("GFM tables and $...$ math, rendered with Pandoc + Typst. "
+                      f"Max {MAX_MD_SIZE_MB} MB.",
+                      cls="url-section-sub"),
+                    cls="url-section-text",
+                ),
+                cls="url-section-header",
+            ),
+            Form(
+                Div(
+                    P("📁", cls="upload-icon"),
+                    Input(
+                        type="file",
+                        name="file",
+                        id="md-upload-input",
+                        accept=",".join(MD_UPLOAD_EXTENSIONS),
+                        style="display:none",
+                        hx_post="/process/md-to-pdf",
+                        hx_encoding="multipart/form-data",
+                        hx_trigger="change",
+                        hx_target="#md-to-pdf-result",
+                        hx_swap="innerHTML",
+                        hx_indicator="#md-to-pdf-indicator",
+                    ),
+                    Label("Choose .md file", cls="file-label-btn",
+                          **{"for": "md-upload-input"}),
+                    P("or drop a file here · or paste one",
+                      cls="upload-hint"),
+                    P(f".md  ·  max {MAX_MD_SIZE_MB} MB",
+                      cls="upload-hint"),
+                    P("", id="md-upload-error", cls="upload-error"),
+                    id="md-upload-zone",
+                    cls="upload-zone",
+                ),
+                Div(
+                    Span(cls="spinner"),
+                    Span("Uploading…"),
+                    id="md-to-pdf-indicator",
+                ),
+            ),
+            cls="url-card",
+        ),
+        Div(id="md-to-pdf-result"),
+        _upload_script(
+            zone_id="md-upload-zone",
+            input_id="md-upload-input",
+            error_id="md-upload-error",
+            result_id="md-to-pdf-result",
+            accept=MD_UPLOAD_EXTENSIONS,
+            max_bytes=MAX_MD_SIZE_BYTES,
+            max_label=f"{MAX_MD_SIZE_MB} MB",
+        ),
+    )
 
 
 def capture_card():

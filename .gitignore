@@ -31,6 +31,8 @@ pdf_files.db
 # Markdown files (except README.md in root)
 *.md
 !README.md
+!md-render-pipeline/
+!md-render-pipeline/**
 .sesskey
 
 # experiment files

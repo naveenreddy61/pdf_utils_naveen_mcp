@@ -1,0 +1,9 @@
+{
+  "name": "md-render-pipeline",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "katex": "^0.18.4"
+  }
+}

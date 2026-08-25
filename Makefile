@@ -2,7 +2,7 @@
 # Usage: make <target>
 # Requires: uv (https://docs.astral.sh/uv/)
 
-.PHONY: help dev install sync restart stop logs logs-100 logs-nginx test \
+.PHONY: help dev install sync restart stop logs logs-100 logs-nginx test test-md \
         install-playwright chrome-path build clean push deploy status
 
 help:
@@ -17,6 +17,7 @@ help:
 	@echo ""
 	@echo "  Testing"
 	@echo "    test              Run OCR service test suite"
+	@echo "    test-md           Run Markdown-to-PDF conversion tests"
 	@echo "    test-env          Verify environment (API key, Google GenAI)"
 	@echo ""
 	@echo "  VPS Service (pdf-app systemd)"
@@ -65,6 +66,9 @@ chrome-path:
 
 test:
 	uv run python tests/test_ocr_service.py
+
+test-md:
+	uv run python tests/test_md_service.py
 
 test-env:
 	@echo "Checking Google GenAI client..."
