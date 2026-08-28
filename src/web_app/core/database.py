@@ -45,6 +45,11 @@ def insert_file_record(file_record: FileRecord):
     files.insert(file_record)
 
 
+def update_file_record(file_hash: str, **fields):
+    """Update fields on an existing file record."""
+    files.update(fields, file_hash)
+
+
 def delete_file_record(file_hash: str):
     """Delete a file record from the database."""
     files.delete(file_hash)

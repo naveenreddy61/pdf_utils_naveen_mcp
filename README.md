@@ -15,8 +15,9 @@ A powerful, browser-based application for processing PDF documents and images wi
   The fetched file behaves exactly like an uploaded one.
 - **Markdown to PDF**: Dedicated card on the home page. Drop or pick a `.md`
   file (GFM tables and `$...$` math, max 8 MB). The server runs
-  `md-render-pipeline/render.sh` (Pandoc + Typst) and downloads a styled PDF.
-  Same GCS/multipart upload path as other files.
+  `md-render-pipeline/render.sh` (Pandoc + Typst, New Computer Modern) and the
+  browser downloads the PDF from a signed GCS URL. Same GCS/multipart upload
+  split as other files. Re-uploading the same `.md` always reconverts (no stale cache).
 
 ### Image Processing
 - **Multi-Format Support**: Upload and process JPG, PNG, WEBP images
@@ -435,7 +436,7 @@ typst fonts | grep -E 'New Computer Modern|JetBrainsMono NF|DejaVu Sans Mono'
 # Optional: apt-get install -y fonts-dejavu  # code fallback
 ./md-render-pipeline/render.sh /tmp/t.md /tmp/t.pdf
 ```
-Markdown files go through the **Markdown to PDF** card at the bottom of `/`, not the top drop zone. Cap is 8 MB (`MAX_MD_SIZE_MB`).
+Markdown files go through the **Markdown to PDF** card at the bottom of `/`, not the top drop zone. Cap is 8 MB (`MAX_MD_SIZE_MB`). Re-uploading the same file always reconverts. `\bar{x}` is remapped so the bar sits on the letter (Pandoc 3.1 would otherwise emit a superscript dash).
 
 **Problem**: "No API key found" warning
 **Solution**:
@@ -774,10 +775,15 @@ Browser → POST /upload (multipart)     Browser → /api/request-upload → sig
                   │
                   ▼
    hash → dedup → PPTX/MD convert → save → page count → poll returns the file card
+                  │
+                  └─ Markdown: upload PDF to temp-downloads/ → signed GET → browser download
 ```
 
 Both routes converge on the same background task, so conversion, deduplication
 and the progress UI behave identically no matter which transport was used.
+Markdown conversions keep the PDF on disk and also push it to GCS so the
+browser downloads from a signed GET URL (falls back to `/{filename}` if GCS
+is off). The temp download object is deleted after the signed URL expires.
 
 The service account key (`GCS_CREDENTIALS_FILE`) must be on disk — it is used at runtime to sign URLs. Keep it out of version control (it is already in `.gitignore`).
 

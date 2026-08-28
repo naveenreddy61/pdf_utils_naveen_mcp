@@ -16,7 +16,7 @@ from web_app.services.md_service import (
 )
 from pdf_utils.config import MAX_MD_SIZE_BYTES
 
-FIXTURE = """# Pipeline check
+FIXTURE = r"""# Pipeline check
 
 | Col A | Col B |
 |-------|-------|
@@ -26,6 +26,12 @@ Inline math $x^2$ and a display:
 
 $$
 a^2 + b^2 = c^2
+$$
+
+Sample mean $\bar{x}$ and $\overline{A}$:
+
+$$
+\bar{x} = \frac{1}{R}\sum_{r=1}^{R} X_r
 $$
 """
 
@@ -51,6 +57,9 @@ def test_convert_md_to_pdf_bytes_table_and_math() -> None:
     doc = fitz.open(stream=pdf, filetype="pdf")
     try:
         assert doc.page_count >= 1
+        text = "".join(page.get_text() for page in doc)
+        assert "\u0304" in text, "expected TeX-style bar (macron) on \\bar{x}"
+        assert "\u203e" not in text, "Pandoc superscript overline leaked into PDF"
     finally:
         doc.close()
     print("ok: table+math PDF")
@@ -99,6 +108,29 @@ def test_project_root_does_not_escape_to_sibling(tmp_root: Path | None = None) -
     print("ok: sibling pipeline not selected")
 
 
+def test_auto_download_script_local_and_gcs() -> None:
+    from fasthtml.common import to_xml
+    from web_app.ui.components import auto_download_script
+    from web_app.services.gcs_service import content_disposition_attachment
+
+    local = to_xml(auto_download_script("abc_note.pdf", "note.pdf"))
+    assert "/abc_note.pdf" in local
+    assert "a.download" in local
+    assert "iframe" not in local
+
+    gcs = to_xml(auto_download_script(
+        "abc_note.pdf", "note.pdf",
+        href="https://storage.googleapis.com/bucket/temp-downloads/x.pdf?X-Goog-Signature=abc",
+    ))
+    assert "storage.googleapis.com" in gcs
+    assert "iframe" in gcs
+    assert "/abc_note.pdf" not in gcs
+    assert content_disposition_attachment("My Note!.pdf") == (
+        'attachment; filename="My_Note_.pdf"'
+    )
+    print("ok: auto-download script local vs GCS")
+
+
 def main() -> int:
     failed = 0
     for fn in (
@@ -106,6 +138,7 @@ def main() -> int:
         test_resolve_render_script_finds_vendored_copy,
         test_convert_md_rejects_oversize,
         test_convert_md_to_pdf_bytes_table_and_math,
+        test_auto_download_script_local_and_gcs,
     ):
         try:
             fn()

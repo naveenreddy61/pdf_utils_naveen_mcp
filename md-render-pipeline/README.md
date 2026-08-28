@@ -41,12 +41,15 @@ you want a different family.
    of the citation tokens, so they must go first.
 3. Applies the safe math auto-fix: empty `\sqrt{}` → `\sqrt{\,}`
    (Typst rejects an empty radicand; LaTeX tolerates it).
-4. Runs pandoc with `--pdf-engine=typst` and these assets:
+4. Runs pandoc with `--pdf-engine=typst` and these assets (`bar-to-overline.lua`
+   rewrites TeX `\bar{x}` before the Typst writer, which would otherwise emit
+   a superscript dash):
 
 | File | Purpose |
 |---|---|
 | `table-widths.lua` | Proportional column widths (sqrt-scaled) so wide tables do not overflow. |
-| `typst-header.typ` | Style: booktabs tables, breakable figures, fonts, code and quote backgrounds. |
+| `bar-to-overline.lua` | Rewrites TeX `\bar{x}` so Pandoc 3.1 does not emit a superscript dash. |
+| `typst-header.typ` | Style: booktabs tables, breakable figures, fonts, code and quote backgrounds. Remaps Pandoc `\bar{x}` (`x^(‾)`) and compact `\overline` to a TeX-style macron so the bar sits on the letter. |
 | `typst-meta.yaml` | A4 paper, 22 mm margins. (`-V margin=22mm` does not work; a metadata file is necessary.) |
 | `mdlint.mjs` / `mdlint-cli.mjs` | KaTeX-based math validator and auto-fixer. |
 

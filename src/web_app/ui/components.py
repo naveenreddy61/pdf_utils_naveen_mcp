@@ -312,18 +312,38 @@ def upload_progress_status(phase: str, pct: int):
     return _progress_bar(phase, pct)
 
 
-def auto_download_script(stored_filename: str, download_as: str):
-    """Forces an immediate browser download of a just-saved upload,
-    via a synthetic <a download> click (window.location.href would just
-    open PDFs in-browser instead of downloading them)."""
-    return Script(
-        "(function(){"
-        "var a=document.createElement('a');"
-        f"a.href={json.dumps('/' + stored_filename)};"
-        f"a.download={json.dumps(download_as)};"
-        "document.body.appendChild(a);a.click();a.remove();"
-        "})();"
-    )
+def auto_download_script(stored_filename: str, download_as: str,
+                         href: str | None = None):
+    """Forces an immediate browser download of a just-saved upload.
+
+    Same-origin paths use a synthetic <a download> click. Cross-origin GCS
+    signed URLs ignore that attribute, so they load in a hidden iframe; the
+    signed URL's Content-Disposition: attachment is what triggers the save.
+    window.location.href would just open PDFs in-browser.
+    """
+    url = href or ("/" + stored_filename)
+    cross_origin = bool(href) and href.startswith(("http://", "https://"))
+    if cross_origin:
+        js = (
+            "(function(){"
+            f"var url={json.dumps(url)};"
+            "var f=document.createElement('iframe');"
+            "f.style.display='none';"
+            "f.src=url;"
+            "document.body.appendChild(f);"
+            "setTimeout(function(){f.remove();},60000);"
+            "})();"
+        )
+    else:
+        js = (
+            "(function(){"
+            "var a=document.createElement('a');"
+            f"a.href={json.dumps(url)};"
+            f"a.download={json.dumps(download_as)};"
+            "document.body.appendChild(a);a.click();a.remove();"
+            "})();"
+        )
+    return Script(js)
 
 
 def task_progress_poll(task_id: str, status_url: str, label: str,

@@ -14,7 +14,8 @@ from pdf_utils.config import (
     EFFECTIVE_MAX_UPLOAD_MB, MAX_MD_SIZE_BYTES, MAX_MD_SIZE_MB,
 )
 from web_app.core.database import (
-    FileRecord, get_file_info, update_last_accessed, insert_file_record
+    FileRecord, get_file_info, update_last_accessed, insert_file_record,
+    update_file_record,
 )
 from web_app.core.utils import calculate_file_hash, sanitize_filename
 from web_app.services.pdf_service import get_page_count
@@ -53,6 +54,50 @@ _EXT_MAP = {
 #                      | { "phase": "done",  "result": (FileRecord, bool) }
 #                      | { "phase": "error", "error": str } }
 _tasks: dict[str, dict] = {}
+
+
+async def _signed_pdf_download_url(local_path: Path, download_as: str) -> str | None:
+    """Upload a server-side PDF to GCS and return a signed GET URL.
+
+    Falls back to None (local /{filename} download) when GCS is off or the
+    upload fails. The temp object is deleted after the signed URL expires.
+    """
+    if not GCS_BUCKET_NAME or not local_path.is_file():
+        return None
+    try:
+        from web_app.services.gcs_service import (
+            upload_and_sign_download, delete_from_gcs,
+        )
+        signed_url, object_name = await asyncio.to_thread(
+            upload_and_sign_download,
+            GCS_BUCKET_NAME,
+            local_path,
+            download_as,
+            "application/pdf",
+            GCS_CREDENTIALS_FILE,
+            GCS_SIGNED_URL_EXPIRY_MINUTES,
+        )
+    except Exception as exc:
+        print(f"Warning: GCS download URL failed, using local file: {exc}", flush=True)
+        return None
+
+    if GCS_DELETE_AFTER_DOWNLOAD:
+        delay = GCS_SIGNED_URL_EXPIRY_MINUTES * 60 + 60
+
+        async def _cleanup() -> None:
+            await asyncio.sleep(delay)
+            try:
+                await delete_from_gcs(
+                    GCS_BUCKET_NAME, object_name, GCS_CREDENTIALS_FILE
+                )
+            except Exception as del_err:
+                print(
+                    f"Warning: could not delete GCS download object: {del_err}",
+                    flush=True,
+                )
+
+        asyncio.create_task(_cleanup())
+    return signed_url
 
 
 def _file_type_from_name(filename: str) -> tuple[str, str] | None:
@@ -97,11 +142,14 @@ async def _run_upload_task(
         await asyncio.sleep(0)
 
         existing = get_file_info(file_hash)
-        if existing:
+        # Markdown is hashed before conversion, so a renderer change would
+        # otherwise keep serving the old PDF forever. Always reconvert .md.
+        if existing and file_type != "md":
             update_last_accessed(file_hash)
             _tasks[task_id] = {"phase": "done", "pct": 100,
                                 "result": (existing, True),
-                                "auto_download": auto_download}
+                                "auto_download": False,
+                                "download_url": None}
             return
 
         # Convert PPTX/PPT → PDF before saving
@@ -124,8 +172,11 @@ async def _run_upload_task(
         await asyncio.sleep(0)
 
         safe_filename   = sanitize_filename(original_filename)
-        stored_filename = f"{file_hash[:8]}_{safe_filename}"
-        file_path       = UPLOAD_DIR / stored_filename
+        if existing:
+            stored_filename = existing.stored_filename
+        else:
+            stored_filename = f"{file_hash[:8]}_{safe_filename}"
+        file_path = UPLOAD_DIR / stored_filename
         await asyncio.to_thread(file_path.write_bytes, content)
 
         _tasks[task_id] = {"phase": "Reading document info…", "pct": 85}
@@ -137,21 +188,42 @@ async def _run_upload_task(
             page_count = await asyncio.to_thread(get_epub_chapter_count, file_path)
         else:
             page_count = 1
-        file_info = FileRecord(
-            file_hash=file_hash,
-            original_filename=original_filename,
-            stored_filename=stored_filename,
-            file_size=len(content),
-            page_count=page_count,
-            file_type=file_type,
-            upload_date=datetime.now().isoformat(),
-            last_accessed=datetime.now().isoformat(),
-        )
-        insert_file_record(file_info)
+        now = datetime.now().isoformat()
+        if existing:
+            update_file_record(
+                file_hash,
+                original_filename=original_filename,
+                file_size=len(content),
+                page_count=page_count,
+                file_type=file_type,
+                last_accessed=now,
+            )
+            file_info = get_file_info(file_hash)
+        else:
+            file_info = FileRecord(
+                file_hash=file_hash,
+                original_filename=original_filename,
+                stored_filename=stored_filename,
+                file_size=len(content),
+                page_count=page_count,
+                file_type=file_type,
+                upload_date=now,
+                last_accessed=now,
+            )
+            insert_file_record(file_info)
+
+        download_url = None
+        if auto_download:
+            _tasks[task_id] = {"phase": "Preparing download…", "pct": 92}
+            await asyncio.sleep(0)
+            download_url = await _signed_pdf_download_url(
+                file_path, original_filename
+            )
 
         _tasks[task_id] = {"phase": "done", "pct": 100,
                            "result": (file_info, False),
-                           "auto_download": auto_download}
+                           "auto_download": auto_download,
+                           "download_url": download_url}
 
     except Exception as exc:
         import traceback; traceback.print_exc()
@@ -329,7 +401,9 @@ def setup_routes(app, rt):
             fragment = _build_file_result_fragment(file_info, is_existing)
             if auto_download:
                 return Div(fragment, auto_download_script(
-                    file_info.stored_filename, file_info.original_filename
+                    file_info.stored_filename,
+                    file_info.original_filename,
+                    href=task.get("download_url"),
                 ))
             return fragment
 

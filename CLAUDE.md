@@ -71,9 +71,11 @@ is the half that fails silently (stale key, dropped CORS rule), and a path only
 taken by rare huge files is one you find broken at the worst moment.
 
 Both then call the **same** `_run_upload_task`, which is the point: PPTX/Markdown
-conversion, dedup, page counting and the polling progress UI must not depend on
+conversion, page counting and the polling progress UI must not depend on
 how the file arrived. `_run_gcs_upload_task` only fetches the object and
-delegates.
+delegates. Markdown is the exception on **dedup**: it is hashed before
+conversion, so a renderer change would otherwise keep serving the old PDF.
+`.md` always reconverts and overwrites the stored file.
 
 Things that will bite you here:
 
@@ -278,7 +280,7 @@ the hardware indicator light goes out.
 
 ## Markdown-to-PDF Conversion (`md_service.py`)
 
-The home page has a dedicated **Markdown to PDF** card below Notebook OCR. `.md` is **not** accepted on the top drop zone (`POST /upload` tells the user to use the card). The card uses the same click/drop/paste-file + GCS split as other uploads (`POST /process/md-to-pdf` under 5 MB; signed URL above). Conversion is `md-render-pipeline/render.sh` (perl cleanup, optional KaTeX empty-`\sqrt{}`, pandoc GFM + Typst). Result is stored as `file_type="pdf"` and auto-downloaded. Cap: 8 MB (`MAX_MD_SIZE_MB`), timeout 120 s (`MD_RENDER_TIMEOUT`). Path: `MD_RENDER_SCRIPT` or sentinel-bounded repo root (`pyproject.toml` / `.git`). Subprocess: argv, `cwd` = temp dir, SIGTERM then SIGKILL.
+The home page has a dedicated **Markdown to PDF** card below Notebook OCR. `.md` is **not** accepted on the top drop zone (`POST /upload` tells the user to use the card). The card uses the same click/drop/paste-file + GCS split as other uploads (`POST /process/md-to-pdf` under 5 MB; signed URL above). Conversion is `md-render-pipeline/render.sh` (perl cleanup, optional KaTeX empty-`\sqrt{}`, `bar-to-overline.lua`, pandoc GFM + Typst). Result is stored as `file_type="pdf"` on disk, then uploaded to `temp-downloads/` and auto-downloaded via a signed GCS GET (local `/{filename}` if GCS is off). Same `.md` always reconverts. Cap: 8 MB (`MAX_MD_SIZE_MB`), timeout 120 s (`MD_RENDER_TIMEOUT`). Path: `MD_RENDER_SCRIPT` or sentinel-bounded repo root (`pyproject.toml` / `.git`). Subprocess: argv, `cwd` = temp dir, SIGTERM then SIGKILL.
 
 **System dependencies (not managed by `uv`):**
 - `pandoc` — `apt install pandoc`

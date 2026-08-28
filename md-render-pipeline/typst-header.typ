@@ -15,6 +15,30 @@
 )
 #show math.equation: set text(font: "New Computer Modern Math")
 
+// Pandoc 3.1 writes TeX \bar{x} as x^(‾) (U+203E as a superscript), which
+// renders as a detached dash: x⁻. Treat that script as a macron accent.
+// Stretching overline sits on each glyph's ink-top, so \overline{x} and
+// \overline{A} misalign; compact bases get the same TeX-style \bar.
+#show math.attach: it => {
+  if repr(it.t) == "[‾]" {
+    let accented = math.accent(it.base, math.macron)
+    if it.b == none and it.tl == none and it.tr == none and it.bl == none and it.br == none {
+      accented
+    } else {
+      math.attach(accented, b: it.b, tl: it.tl, tr: it.tr, bl: it.bl, br: it.br)
+    }
+  } else {
+    it
+  }
+}
+#show math.overline: it => {
+  if repr(it.body.func()) == "sequence" {
+    it
+  } else {
+    math.accent(it.body, math.macron)
+  }
+}
+
 // ---- headings ----
 #show heading: it => {
   set text(font: ("New Computer Modern", "Libertinus Serif"), weight: "bold")

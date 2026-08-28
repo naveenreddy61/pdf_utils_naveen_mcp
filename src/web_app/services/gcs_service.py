@@ -1,7 +1,7 @@
-"""Google Cloud Storage service for direct browser uploads.
+"""Google Cloud Storage service for direct browser uploads and downloads.
 
-Provides signed URLs so browsers can upload files directly to GCS,
-bypassing Cloudflare's 100 MB proxy limit entirely.
+Provides signed URLs so browsers can PUT large files to GCS (bypassing
+Cloudflare's 100 MB proxy limit) and GET converted files the same way.
 """
 
 import uuid
@@ -21,6 +21,17 @@ def _build_client(credentials_file: str | None) -> storage.Client:
     return storage.Client()
 
 
+def _object_basename(original_filename: str) -> str:
+    name = Path(original_filename).name or "download.bin"
+    safe = "".join(c if c.isalnum() or c in "._-" else "_" for c in name)
+    return safe or "download.bin"
+
+
+def content_disposition_attachment(filename: str) -> str:
+    """ASCII Content-Disposition for a signed URL query parameter."""
+    return f'attachment; filename="{_object_basename(filename)}"'
+
+
 def generate_upload_signed_url(
     bucket_name: str,
     original_filename: str,
@@ -34,7 +45,7 @@ def generate_upload_signed_url(
         (signed_url, gcs_object_name) tuple.
         The caller should pass gcs_object_name back on confirm-upload.
     """
-    safe = "".join(c if c.isalnum() or c in "._-" else "_" for c in original_filename)
+    safe = _object_basename(original_filename)
     gcs_object_name = f"temp-uploads/{uuid.uuid4().hex}_{safe}"
 
     client = _build_client(credentials_file)
@@ -79,3 +90,38 @@ async def delete_from_gcs(
         blob.delete()
 
     await asyncio.to_thread(_delete)
+
+
+def upload_and_sign_download(
+    bucket_name: str,
+    local_path: Path,
+    download_as: str,
+    content_type: str = "application/pdf",
+    credentials_file: str | None = None,
+    expiration_minutes: int = 15,
+) -> tuple[str, str]:
+    """Upload a local file and return (signed GET URL, object name).
+
+    The signed URL carries response-content-disposition so a browser
+    navigation downloads the file instead of previewing it. Caller should
+    delete the object after the URL expires.
+    """
+    safe = _object_basename(download_as)
+    gcs_object_name = f"temp-downloads/{uuid.uuid4().hex}_{safe}"
+    disposition = content_disposition_attachment(download_as)
+
+    client = _build_client(credentials_file)
+    bucket = client.bucket(bucket_name)
+    blob = bucket.blob(gcs_object_name)
+    blob.content_type = content_type
+    blob.content_disposition = disposition
+    blob.upload_from_filename(str(local_path))
+
+    signed_url = blob.generate_signed_url(
+        version="v4",
+        expiration=datetime.timedelta(minutes=expiration_minutes),
+        method="GET",
+        response_disposition=disposition,
+        response_type=content_type,
+    )
+    return signed_url, gcs_object_name

@@ -55,6 +55,7 @@ fi
 pandoc "$WORK" \
   --from=gfm+pipe_tables+footnotes+smart+tex_math_dollars \
   --lua-filter="$PIPE_DIR/table-widths.lua" \
+  --lua-filter="$PIPE_DIR/bar-to-overline.lua" \
   --pdf-engine=typst \
   --metadata-file="$PIPE_DIR/typst-meta.yaml" \
   -V fontsize=11pt \
