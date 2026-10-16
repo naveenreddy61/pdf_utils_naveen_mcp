@@ -22,8 +22,10 @@ from pdf_utils.config import (
     OCR_CONCURRENT_REQUESTS,
     OCR_MAX_RETRIES,
     OCR_RETRY_DELAY_BASE,
-    OCR_BATCH_TIMEOUT
+    OCR_BATCH_TIMEOUT,
+    DEEPSEEK_OCR_DPI,
 )
+from .deepseek_ocr import deepseek_api_key, ocr_page_image_with_deepseek
 from .ocr_cache import (
     compute_content_hash,
     get_cached_ocr,
@@ -136,6 +138,10 @@ def create_pdf_subset_bytes(pdf_path: Path, page_nums: List[int]) -> bytes:
     return pdf_bytes
 
 
+# Above this many vector drawings, skip pymupdf4llm (see extract_with_pymupdf_fallback).
+FALLBACK_MAX_DRAWINGS = 300
+
+
 def extract_with_pymupdf_fallback(pdf_path: Path, page_num: int) -> str:
     """
     Extract text from a page using PyMuPDF as fallback.
@@ -148,7 +154,13 @@ def extract_with_pymupdf_fallback(pdf_path: Path, page_num: int) -> str:
         Extracted text
     """
     try:
-        # Try pymupdf4llm first for better formatting
+        # pymupdf4llm gives better formatting but analyses every vector drawing:
+        # a diagram-heavy web-printed page (~2,400 drawings) took 35 s. Use the
+        # plain text layer for those.
+        with pymupdf.open(pdf_path) as doc:
+            page = doc[page_num - 1]
+            if len(page.get_cdrawings()) > FALLBACK_MAX_DRAWINGS:
+                return page.get_text()
         page_text = pymupdf4llm.to_markdown(pdf_path, pages=[page_num - 1])
         return page_text
     except Exception:
@@ -161,6 +173,10 @@ def extract_with_pymupdf_fallback(pdf_path: Path, page_num: int) -> str:
             return page_text
         except Exception as e:
             return f"[Error extracting text from page {page_num}: {str(e)}]"
+
+
+class OcrBlockedError(Exception):
+    """Gemini finished without text, e.g. finish_reason=RECITATION on public web content."""
 
 
 def create_cache_key(pdf_path: Path, page_nums: List[int]) -> str:
@@ -239,6 +255,10 @@ async def ocr_pdf_subset_with_llm(
         
         # Extract response
         extracted_text = response.text
+        if not extracted_text:
+            candidate = response.candidates[0] if response.candidates else None
+            reason = getattr(candidate, "finish_reason", None) or response.prompt_feedback
+            raise OcrBlockedError(f"Gemini returned no text (finish_reason={reason})")
         
         # Get token usage from GenAI response
         input_tokens, output_tokens = extract_token_usage(response)
@@ -301,6 +321,13 @@ async def process_page_chunk(
                 "retry_count": 0
             }]
             
+        except OcrBlockedError as e:
+            # RECITATION/SAFETY blocks are deterministic: retrying the same page
+            # only burns backoff time. Go to DeepSeek, then the PDF's own text layer.
+            print(f"OCR blocked for pages {page_nums}: {e}")
+            return [await ocr_blocked_page(pdf_path, page_num, pdf_filename)
+                    for page_num in page_nums]
+
         except Exception as e:
             # Return failed results for all pages in the chunk
             return [{
@@ -313,6 +340,38 @@ async def process_page_chunk(
                 "error": str(e),
                 "retry_count": 0
             } for page_num in page_nums]
+
+
+async def ocr_blocked_page(
+    pdf_path: Path, page_num: int, pdf_filename: Optional[str] = None
+) -> Dict[str, Any]:
+    """OCR one page Gemini refused: DeepSeek if configured, else PyMuPDF."""
+    result = {"page": page_num, "success": True, "error": None, "retry_count": 0}
+
+    if deepseek_api_key():
+        try:
+            png = await asyncio.to_thread(render_page_png, pdf_path, page_num, DEEPSEEK_OCR_DPI)
+            text, in_tok, out_tok = await ocr_page_image_with_deepseek(png, load_ocr_prompt())
+            # Same key Gemini would have used, so a rerun is a cache hit.
+            await save_ocr_to_cache(
+                create_cache_key(pdf_path, [page_num]), text, in_tok, out_tok,
+                pdf_filename, page_num,
+            )
+            print(f"DeepSeek OCR recovered page {page_num}")
+            return {**result, "text": text.strip(), "input_tokens": in_tok,
+                    "output_tokens": out_tok, "method": "deepseek"}
+        except Exception as e:
+            print(f"DeepSeek OCR failed for page {page_num}, using PyMuPDF: {e}")
+
+    text = await asyncio.to_thread(extract_with_pymupdf_fallback, pdf_path, page_num)
+    return {**result, "text": text, "input_tokens": 0, "output_tokens": 0,
+            "method": "pymupdf_fallback"}
+
+
+def render_page_png(pdf_path: Path, page_num: int, dpi: int) -> bytes:
+    """Render one 1-based page to PNG bytes."""
+    with pymupdf.open(pdf_path) as doc:
+        return doc[page_num - 1].get_pixmap(dpi=dpi).tobytes("png")
 
 
 async def retry_failed_chunks(
@@ -511,7 +570,9 @@ async def process_document_async(
         
         for failed_result in final_failed_pages:
             try:
-                fallback_text = extract_with_pymupdf_fallback(pdf_path, failed_result["page"])
+                fallback_text = await asyncio.to_thread(
+                    extract_with_pymupdf_fallback, pdf_path, failed_result["page"]
+                )
                 failed_result.update({
                     "text": fallback_text,
                     "method": "pymupdf_fallback",
@@ -531,6 +592,7 @@ async def process_document_async(
     cached_pages = []
     llm_pages = []
     fallback_pages = []
+    deepseek_pages = []
     tokens_saved = 0
     
     for result in all_results:
@@ -551,6 +613,8 @@ async def process_document_async(
             cached_pages.append(result["page"])
         elif result["method"] == "llm":
             llm_pages.append(result["page"])
+        elif result["method"] == "deepseek":
+            deepseek_pages.append(result["page"])
         elif result["method"] == "pymupdf_fallback":
             fallback_pages.append(result["page"])
     
@@ -577,6 +641,7 @@ async def process_document_async(
         "cached_pages": cached_pages,
         "llm_pages": llm_pages,
         "fallback_pages": fallback_pages,
+        "deepseek_pages": deepseek_pages,
         "processing_time": processing_time,
         "pages_processed": len(all_results),
         "retry_count": sum(r["retry_count"] for r in all_results),

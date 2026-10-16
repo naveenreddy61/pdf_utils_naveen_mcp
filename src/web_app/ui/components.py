@@ -1140,6 +1140,7 @@ def ocr_result_display(results, file_hash, start_page, end_page, text_filename):
     cached_pages  = results.get("cached_pages", [])
     llm_pages     = results.get("llm_pages", [])
     fallback_pages = results.get("fallback_pages", [])
+    deepseek_pages = results.get("deepseek_pages", [])
     pages_done    = results.get("pages_processed", 0)
     cache_rate    = (len(cached_pages) / pages_done * 100) if pages_done else 0
     proc_time     = results.get("processing_time", 0)
@@ -1191,6 +1192,8 @@ def ocr_result_display(results, file_hash, start_page, end_page, text_filename):
             page_items.append(Li(f"💾 Page {p}: Cached",        style="color:#17a2b8"))
         for p in llm_pages:
             page_items.append(Li(f"🤖 Page {p}: LLM OCR",       style="color:#16a34a"))
+        for p in deepseek_pages:
+            page_items.append(Li(f"🐋 Page {p}: DeepSeek (Gemini blocked)", style="color:#7c3aed"))
         for p in fallback_pages:
             page_items.append(Li(f"📄 Page {p}: PyMuPDF",       style="color:#ea580c"))
 

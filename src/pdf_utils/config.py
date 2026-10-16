@@ -66,6 +66,16 @@ OCR_TIMEOUT = 60
 OCR_MAX_TOKENS = 4096
 # OCR processes one page at a time for simplicity and reliability
 
+# Second-opinion OCR for pages Gemini refuses (finish_reason=RECITATION: its
+# copyright filter fires on text published on the web, e.g. "How To Scale Your
+# Model"). DeepSeek V4.1 Flash takes images, not PDFs, so the page is rendered.
+# Off unless DEEPSEEK_API_KEY is set (read at call time, after load_dotenv); PyMuPDF's text layer stays the last resort.
+DEEPSEEK_BASE_URL = "https://api.deepseek.com"
+DEEPSEEK_OCR_MODEL = "deepseek-flash"
+DEEPSEEK_OCR_DPI = 150          # the API rescales to ~1300x1300 px anyway
+DEEPSEEK_OCR_MAX_TOKENS = 8192  # diagram-heavy pages ran ~3k tokens of Markdown
+DEEPSEEK_OCR_TIMEOUT = 90
+
 # Handwriting OCR (camera capture) settings
 # Kept on separate knobs so a regression in one tier cannot degrade the other.
 HANDWRITING_OCR_MODEL = "gemini-flash-latest"
@@ -164,4 +174,4 @@ MAX_FILE_SIZE_GCS_BYTES = MAX_FILE_SIZE_GCS_MB * 1024 * 1024
 # The largest upload this deployment will accept by any route — what the UI
 # should advertise.
 EFFECTIVE_MAX_UPLOAD_MB = max(MAX_FILE_SIZE_MB,
-                              MAX_FILE_SIZE_GCS_MB if GCS_ENABLED else 0)
+                              MAX_FILE_SIZE_GCS_MB if GCS_ENABLED else 0)
